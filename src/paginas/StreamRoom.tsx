@@ -13,7 +13,7 @@ interface MensajeChat {
 }
 
 const StreamRoom = () => {
-    const { id } = useParams(); // ID del Streamer (Dueño del canal)
+    const { id } = useParams(); // Este es el ID del USUARIO (Streamer)
     const { user, refreshUser } = useAuth();
     const navigate = useNavigate();
     
@@ -28,8 +28,10 @@ const StreamRoom = () => {
     const [overlayEvent, setOverlayEvent] = useState<string | null>(null);
     const [streamEnded, setStreamEnded] = useState(false);
 
-    // Estado Streamer (Solo si soy el dueño)
+    // Estado Streamer
     const [isStreaming, setIsStreaming] = useState(false);
+    
+    // <--- CAMBIO CLAVE 1: currentStreamId almacenará el ID de la TRANSMISIÓN única, no del usuario
     const [currentStreamId, setCurrentStreamId] = useState<number|null>(null);
     const [metaXpStreamer, setMetaXpStreamer] = useState(1000);
     
@@ -42,7 +44,6 @@ const StreamRoom = () => {
         const fetchDatos = async () => {
             if (id) {
                 try {
-                    // Obtener info del dueño del canal
                     const streamerData = await api.get(`/user/${id}`);
                     setMetaXpStreamer(streamerData.metaXp || 1000);
                     setStreamInfo({ 
@@ -52,17 +53,14 @@ const StreamRoom = () => {
                         categoria: "General" 
                     });
 
-                    // Cargar Regalos disponibles
                     const regalosData = await api.get('/shop/regalos');
                     setRegalos(regalosData);
 
-                    // Verificar estado inicial del stream
                     const status = await api.get(`/streams/status/${id}`);
                     if (status.isLive) {
                         setIsStreaming(true);
-                        setCurrentStreamId(status.streamId);
+                        setCurrentStreamId(status.streamId); // Guardamos el ID de la sesión actual
                     } else if (Number(user?.id) !== Number(id)) {
-                        // Si no soy el dueño y no está en vivo
                         setStreamEnded(true);
                     }
                 } catch (e) { console.error("Error cargando sala"); }
@@ -71,37 +69,44 @@ const StreamRoom = () => {
         fetchDatos();
     }, [id, user]);
 
-    // 2. SCROLL AUTOMÁTICO AL CHAT
+    // 2. SCROLL AUTOMÁTICO
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chat]);
 
-    // 3. POLLING PRINCIPAL (Cada 2 segundos)
+    // 3. POLLING PRINCIPAL (Chat y Estado)
     useEffect(() => {
         if (!id) return;
 
         const interval = setInterval(async () => {
-            // A. Sincronizar Chat
-            try {
-                const msgs = await api.get(`/chat/${id}`);
-                setChat(msgs);
-            } catch (e) { /* ignore */ }
+            // <--- CAMBIO CLAVE 2: Consultar chat usando currentStreamId (Sesión), no 'id' (Usuario)
+            if (currentStreamId) {
+                try {
+                    const msgs = await api.get(`/chat/${currentStreamId}`);
+                    setChat(msgs);
+                } catch (e) { /* ignore */ }
+            }
 
-            // B. Verificar Estado del Stream (Para espectadores)
+            // Verificar Estado del Stream
             if (user?.rol === 'espectador' || (user?.rol === 'streamer' && Number(user.id) !== Number(id))) {
                 try {
                     const status = await api.get(`/streams/status/${id}`);
                     if (!status.isLive) {
                         setStreamEnded(true);
                         setIsStreaming(false);
+                        setCurrentStreamId(null); // Limpiamos ID si acaba
                     } else {
                         setStreamEnded(false);
                         setIsStreaming(true);
+                        // Importante: Si el espectador llega tarde, aquí obtenemos el ID de sesión
+                        if (status.streamId !== currentStreamId) {
+                            setCurrentStreamId(status.streamId);
+                        }
                     }
                 } catch (e) { /* ignore */ }
             }
 
-            // C. Overlay de Eventos (Solo para el Streamer Dueño)
+            // Overlay de Eventos (Solo Streamer)
             if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
                 try {
                     const eventos = await api.get(`/shop/eventos?since=${lastCheckRef.current}`);
@@ -109,40 +114,34 @@ const StreamRoom = () => {
                         const ultimo = eventos[eventos.length - 1];
                         triggerOverlay(ultimo.detalle);
                         lastCheckRef.current = Date.now();
-                        
-                        // Si el evento implica envío de regalo, ya se guardó en DB, 
-                        // pero podemos inyectar mensaje de sistema localmente si se desea, 
-                        // aunque es mejor que el backend de chat lo maneje.
                     }
                 } catch (e) { /* ignore */ }
             }
 
-        }, 2000); // Polling cada 2s
+        }, 2000); 
 
         return () => clearInterval(interval);
-    }, [id, user]);
+    }, [id, user, currentStreamId]); // Agregamos currentStreamId a dependencias
 
-    // Helper para Overlay
     const triggerOverlay = (texto: string) => {
         setOverlayEvent(texto);
         setTimeout(() => setOverlayEvent(null), 5000);
     };
 
-    // 4. MANEJO DE CHAT (Envía al backend)
+    // 4. MANEJO DE CHAT
     const handleChat = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user || !mensaje.trim()) return;
+        // Validamos que exista currentStreamId (que el stream esté activo)
+        if (!user || !mensaje.trim() || !currentStreamId) return;
 
         const msgContent = mensaje;
-        setMensaje(""); // Limpiar input inmediatamente (UX)
+        setMensaje(""); 
 
-        // A. Sumar XP (Requerimiento 11)
         const resXp = await api.post('/user/chat-xp', { 
             userId: user.id, 
             currentMetaXp: metaXpStreamer 
         });
 
-        // B. Notificar Nivel (Requerimiento 14)
         if (resXp.subioNivel) {
             setModal({ 
                 isOpen: true, 
@@ -152,20 +151,20 @@ const StreamRoom = () => {
             refreshUser();
         }
 
-        // C. Enviar mensaje a DB para sincronización
+        // <--- CAMBIO CLAVE 3: Enviamos currentStreamId al backend
         await api.post('/chat/enviar', {
             userId: user.id,
             nombre: user.nombre,
             contenido: msgContent,
-            nivel: resXp.nivel || user.nivelEspectador, // Usar nivel actualizado
+            nivel: resXp.nivel || user.nivelEspectador, 
             rol: user.rol,
-            streamId: id
+            streamId: currentStreamId // ID de la sesión
         });
     };
 
     // 5. ENVIAR REGALO
     const handleEnviarRegalo = async (regalo: any) => {
-        if (!user) return;
+        if (!user || !currentStreamId) return;
         
         const res = await api.post('/shop/enviar', { 
             viewerId: user.id, 
@@ -175,18 +174,16 @@ const StreamRoom = () => {
         
         if (res.success) {
             await refreshUser();
-            
-            // Animación Local para el que envía
             triggerOverlay(`Enviaste ${regalo.nombre} ${regalo.icono}`);
 
-            // Enviar mensaje de sistema al chat
+            // <--- CAMBIO CLAVE 4: Mensaje de sistema con currentStreamId
             await api.post('/chat/enviar', {
                 userId: user.id,
                 nombre: "SISTEMA",
                 contenido: `${user.nombre} ha enviado ${regalo.nombre} ${regalo.icono} 🎁`,
                 nivel: 0,
                 rol: "sistema",
-                streamId: id
+                streamId: currentStreamId
             });
 
             if (res.subioNivel) {
@@ -197,27 +194,30 @@ const StreamRoom = () => {
         }
     };
 
-    // 6. CONTROL DEL STREAM (Solo Dueño)
+    // 6. CONTROL DEL STREAM
     const toggleStream = async () => {
         if (!user || user.rol !== 'streamer') return;
 
         if (!isStreaming) {
+            // INICIAR
             const res = await api.post('/streams/start', { 
                 userId: user.id, 
                 titulo: streamInfo.titulo, 
                 categoria: "General" 
             });
-            setCurrentStreamId(res.streamId);
+            setCurrentStreamId(res.streamId); // Guardamos nuevo ID
             setIsStreaming(true);
             setStreamEnded(false);
+            setChat([]); // <--- ¡LIMPIAMOS EL CHAT LOCALMENTE AL INICIAR!
         } else {
+            // DETENER
             const res = await api.post('/streams/stop', { 
                 userId: user.id, 
                 streamId: currentStreamId 
             });
             setIsStreaming(false);
+            setCurrentStreamId(null); // Reseteamos ID
             
-            // Requerimiento 16: Aviso al subir de nivel por horas
             if (res.subioNivel) {
                 triggerOverlay(`¡SUBISTE A NIVEL DE STREAMER ${res.nivel}! 📈`);
                 setModal({ isOpen:true, title:'¡LEVEL UP STREAMER!', message:`Has subido al nivel ${res.nivel} por tus horas transmitidas.`});
@@ -228,21 +228,18 @@ const StreamRoom = () => {
         }
     };
 
-    // RENDER
     if (!streamInfo) return <div className="text-center mt-40">Cargando sala...</div>;
 
     return (
         <div className="stream-room-layout">
             <MiModal isOpen={modal.isOpen} onClose={()=>setModal({...modal, isOpen:false})} type="alert" title={modal.title} message={modal.message}/>
             
-            {/* OVERLAY ANIMADO (Centro de pantalla) */}
             {overlayEvent && (
                 <div className="gift-overlay-animation">
                     <h1 className="text-neon" style={{fontSize:'2.5rem', textAlign:'center'}}>{overlayEvent}</h1>
                 </div>
             )}
 
-            {/* COLUMNA IZQUIERDA: VIDEO */}
             <div className="video-column">
                 <div className="video-player-container" style={{position: 'relative'}}>
                     {streamEnded ? (
@@ -269,7 +266,6 @@ const StreamRoom = () => {
                         </div>
                     </div>
                     
-                    {/* Botones del Streamer */}
                     {user?.rol === 'streamer' && Number(user.id) === Number(id) && (
                         <button onClick={toggleStream} className={isStreaming ? "btn-delete" : "btn-neon"}>
                             {isStreaming ? "TERMINAR STREAM 🔴" : "INICIAR STREAM 📡"}
@@ -278,7 +274,6 @@ const StreamRoom = () => {
                 </div>
             </div>
 
-            {/* COLUMNA DERECHA: CHAT */}
             <div className="chat-column">
                 <div className="chat-messages">
                     {chat.map((c, i) => (
@@ -311,15 +306,14 @@ const StreamRoom = () => {
                             value={mensaje} 
                             onChange={e=>setMensaje(e.target.value)} 
                             className="chat-input" 
-                            placeholder={user ? "Escribe..." : "Inicia sesión para chatear"} 
-                            disabled={!user || streamEnded}
+                            placeholder={isStreaming ? "Escribe..." : "Stream Offline"} 
+                            disabled={!user || streamEnded || !isStreaming}
                         />
-                        <button className="btn-chat" disabled={!user || streamEnded}>➤</button>
+                        <button className="btn-chat" disabled={!user || streamEnded || !isStreaming}>➤</button>
                     </form>
                 </div>
                 
-                {/* Panel de Regalos (Solo Espectador) */}
-                {user?.rol === 'espectador' && !streamEnded && (
+                {user?.rol === 'espectador' && !streamEnded && isStreaming && (
                     <div className="gifts-panel">
                         <div style={{display:'flex', justifyContent:'space-between', marginBottom:'10px'}}>
                              <span className="text-small">Saldo: <span className="text-neon">{user.monedas} 💰</span></span>
