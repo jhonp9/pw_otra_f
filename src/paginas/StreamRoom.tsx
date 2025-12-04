@@ -29,7 +29,7 @@ const StreamRoom = () => {
     const [streamEnded, setStreamEnded] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
     
-    // Lógica Clave: ID único de la sesión de stream actual
+    // ID único de la sesión de stream actual
     const [currentStreamId, setCurrentStreamId] = useState<number|null>(null);
     const [metaXpStreamer, setMetaXpStreamer] = useState(1000);
     
@@ -82,13 +82,12 @@ const StreamRoom = () => {
                 
                 // Si detectamos un cambio de Stream ID (nuevo stream), limpiamos chat
                 if (status.isLive && status.streamId !== currentStreamId) {
-                    setChat([]); // <--- LIMPIEZA FORZADA AL CAMBIAR DE STREAM
+                    setChat([]); 
                     setCurrentStreamId(status.streamId);
                     setIsStreaming(true);
                     setStreamEnded(false);
                 } 
                 else if (!status.isLive && isStreaming) {
-                    // Si el stream acaba de terminar
                     setIsStreaming(false);
                     setStreamEnded(true);
                     setCurrentStreamId(null);
@@ -124,7 +123,7 @@ const StreamRoom = () => {
         setTimeout(() => setOverlayEvent(null), 5000);
     };
 
-    // 4. Enviar Mensaje
+    // 4. Enviar Mensaje (MODIFICADO PARA XP VISIBLE)
     const handleChat = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !mensaje.trim() || !currentStreamId) return;
@@ -132,14 +131,17 @@ const StreamRoom = () => {
         const msgContent = mensaje;
         setMensaje(""); 
 
+        // Llamada al backend para sumar XP
         const resXp = await api.post('/user/chat-xp', { 
             userId: user.id, 
             currentMetaXp: metaXpStreamer 
         });
 
+        // CAMBIO IMPORTANTE: Refrescamos el usuario SIEMPRE para ver el +1 XP en la barra
+        await refreshUser(); 
+
         if (resXp.subioNivel) {
             setModal({ isOpen: true, title: '¡LEVEL UP! 🚀', message: `¡Nivel ${resXp.nivel} alcanzado!` });
-            refreshUser();
         }
 
         await api.post('/chat/enviar', {
@@ -183,7 +185,7 @@ const StreamRoom = () => {
         }
     };
 
-    // 6. Control Stream (Start/Stop)
+    // 6. Control Stream
     const toggleStream = async () => {
         if (!user || user.rol !== 'streamer') return;
 
@@ -193,7 +195,7 @@ const StreamRoom = () => {
                 titulo: streamInfo.titulo, 
                 categoria: "General" 
             });
-            setChat([]); // Limpiar chat localmente al iniciar
+            setChat([]); 
             setCurrentStreamId(res.streamId);
             setIsStreaming(true);
             setStreamEnded(false);
@@ -214,7 +216,7 @@ const StreamRoom = () => {
         }
     };
 
-    // Calculo de progreso para el espectador
+    // Calculo de progreso para la barra visual
     const xpNeeded = metaXpStreamer;
     const currentXp = user ? user.puntosXP % xpNeeded : 0;
     const progressPercent = Math.min((currentXp / xpNeeded) * 100, 100);
@@ -264,7 +266,7 @@ const StreamRoom = () => {
             </div>
 
             <div className="chat-column">
-                {/* Barra de progreso de Nivel (Espectador) - REQUERIMIENTO CUMPLIDO */}
+                {/* BARRA DE PROGRESO DE NIVEL - AHORA SE ACTUALIZA CON CADA MENSAJE */}
                 {user && user.rol === 'espectador' && (
                     <div style={{padding: '10px', background: '#111', borderBottom: '1px solid #333'}}>
                         <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.8rem', marginBottom:'5px'}}>
