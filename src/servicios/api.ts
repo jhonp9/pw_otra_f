@@ -25,6 +25,14 @@ export const api = {
         });
         return res.json();
     },
+    async put(endpoint: string, body: any) {
+        const res = await fetch(`${BASE_URL}${endpoint}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(body)
+        });
+        return res.json();
+    },
     async delete(endpoint: string) {
         const res = await fetch(`${BASE_URL}${endpoint}`, { 
             method: 'DELETE',

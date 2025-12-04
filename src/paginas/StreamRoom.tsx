@@ -28,21 +28,30 @@ const StreamRoom = () => {
     // Estado Control Stream (Solo Streamer)
     const [isStreaming, setIsStreaming] = useState(false);
     const [currentStreamId, setCurrentStreamId] = useState<number|null>(null);
+    const [metaXpStreamer, setMetaXpStreamer] = useState(1000);
 
     // 1. Cargar datos iniciales
     useEffect(() => {
         const fetchDatos = async () => {
-            // Cargar lista de regalos
+            // Cargar datos del usuario dueño del stream para obtener su metaXp
+            // Esto asume que tienes un endpoint /api/user/:id que devuelve metaXp
+            if (id) {
+                try {
+                    const streamerData = await api.get(`/user/${id}`);
+                    setMetaXpStreamer(streamerData.metaXp || 1000); // Guardamos la config
+                    
+                    setStreamInfo({ 
+                        id, 
+                        titulo: `Canal de ${streamerData.nombre}`, 
+                        usuario: streamerData.nombre, 
+                        categoria: "General" 
+                    });
+                } catch (e) {
+                    console.error("Error cargando streamer");
+                }
+            }
             const regalosData = await api.get('/shop/regalos');
             setRegalos(regalosData);
-            
-            // Simular obtención de info del stream (en un caso real, haríamos fetch /api/streams/:id)
-            setStreamInfo({ 
-                id, 
-                titulo: "Transmisión en Vivo", 
-                usuario: "Streamer Host", 
-                categoria: "Just Chatting" 
-            }); 
         };
         fetchDatos();
     }, [id]);
@@ -52,27 +61,28 @@ const StreamRoom = () => {
         e.preventDefault();
         if (!user || !mensaje.trim()) return;
 
-        // Backend XP (Ahora devuelve si subió de nivel)
-        const res = await api.post('/user/chat-xp', { userId: user.id });
+        // REQ 22: Enviamos currentMetaXp al backend
+        const res = await api.post('/user/chat-xp', { 
+            userId: user.id, 
+            currentMetaXp: metaXpStreamer 
+        });
         
-        // Req 14: Notificación de subida de nivel por chat
+        // ... (resto de lógica de chat, notificaciones, etc)
         if (res.subioNivel) {
-            setModal({ 
+             setModal({ 
                 isOpen: true, 
                 title: '¡SUBISTE DE NIVEL! 🚀', 
-                message: `¡Increíble! Has alcanzado el Nivel de Espectador ${res.nivel} solo por chatear.` 
+                message: `Has alcanzado el Nivel ${res.nivel} en este canal.` 
             });
             refreshUser();
         }
-        
-        // Req 13: Mostrar nivel en el chat localmente
+
         const nuevoMensaje: MensajeChat = {
             user: user.nombre,
             msg: mensaje,
             nivel: res.nivel || user.nivelEspectador,
             rol: user.rol
         };
-
         setChat([...chat, nuevoMensaje]);
         setMensaje("");
     };
@@ -165,9 +175,9 @@ const StreamRoom = () => {
                     </div>
                     
                     {/* Botón solo visible para el Streamer */}
-                    {user?.rol === 'streamer' && (
+                    {user?.rol === 'streamer' && Number(user.id) === Number(id) && (
                         <button onClick={toggleStream} className={isStreaming ? "btn-delete" : "btn-neon"}>
-                            {isStreaming ? "TERMINAR STREAM" : "INICIAR STREAM"}
+                            {isStreaming ? "TERMINAR STREAM 🔴" : "INICIAR STREAM 📡"}
                         </button>
                     )}
                 </div>

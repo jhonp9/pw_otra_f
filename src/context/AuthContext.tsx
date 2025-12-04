@@ -11,6 +11,7 @@ interface User {
   nivelEspectador: number;
   horasStream: number;
   nivelStreamer: number;
+  metaXp: number; // <--- NUEVO CAMPO REQUERIDO
 }
 
 interface AuthContextType {
