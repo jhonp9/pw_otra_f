@@ -8,9 +8,11 @@ const DashboardUnificado = () => {
     const { user, refreshUser } = useAuth();
     const navigate = useNavigate();
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
+    
+    // Estado para compra de monedas
     const [monto, setMonto] = useState(100);
     const [showPayModal, setShowPayModal] = useState(false);
-    const [tarjeta, setTarjeta] = useState({ num: '', cvc: '', exp: '' });
+    const [tarjeta, setTarjeta] = useState({ nombre: '', num: '', cvc: '', exp: '' });
     
     // Configuración de Niveles NO LINEAL
     const [nivelesConfig, setNivelesConfig] = useState<Record<string, number>>({});
@@ -23,12 +25,10 @@ const DashboardUnificado = () => {
     useEffect(() => {
         if (user?.rol === 'streamer') {
             cargarRegalos();
-            // Cargar configuración existente
             if(user.configNiveles) {
                 try {
                     const parsed = JSON.parse(user.configNiveles);
                     setNivelesConfig(parsed);
-                    // Predecir el siguiente nivel a configurar
                     const maxLvl = Math.max(...Object.keys(parsed).map(Number), 1);
                     setNuevoNivelKey(maxLvl + 1);
                 } catch(e) { setNivelesConfig({}) }
@@ -41,11 +41,10 @@ const DashboardUnificado = () => {
         setRegalos(data);
     };
 
-    // Agregar un nivel a la lista local
     const agregarConfigNivel = () => {
         setNivelesConfig({ ...nivelesConfig, [nuevoNivelKey]: nuevoNivelXP });
         setNuevoNivelKey(nuevoNivelKey + 1);
-        setNuevoNivelXP(nuevoNivelXP + 1000); // Sugerencia automática
+        setNuevoNivelXP(nuevoNivelXP + 1000); 
     };
 
     const eliminarConfigNivel = (lvl: string) => {
@@ -68,12 +67,15 @@ const DashboardUnificado = () => {
     const handleProcesarPago = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
+        // Validación simple: campos no vacíos
+        if(!tarjeta.nombre || !tarjeta.num || !tarjeta.exp || !tarjeta.cvc) return;
+
         setTimeout(async () => {
             const res = await api.post('/shop/comprar', { userId: user.id, monto });
             await refreshUser(); 
             setShowPayModal(false);
             setModal({ isOpen: true, title: '✅ PAGO EXITOSO', message: `Nuevo saldo: ${res.monedas}` });
-            setTarjeta({ num: '', cvc: '', exp: '' });
+            setTarjeta({ nombre:'', num: '', cvc: '', exp: '' });
         }, 1500);
     };
 
@@ -93,10 +95,19 @@ const DashboardUnificado = () => {
 
     if (!user) return <div className="container text-center text-neon mt-40">Cargando...</div>;
 
-    // Cálculo visual simple para espectador (usando lineal como fallback visual en el dashboard global)
+    // Cálculo visual espectador
     const xpMeta = 1000; 
     const xpActualNivel = user.puntosXP % xpMeta;
     const porcentajeNivel = (xpActualNivel / xpMeta) * 100;
+
+    // Cálculo visual Streamer (Corregido)
+    // Supongamos que cada 0.01 horas es 1 nivel (tu lógica de backend)
+    // Progreso = (Horas totales % 0.01) / 0.01 * 100
+    // Multiplicamos por 10000 y sacamos modulo 100 para evitar decimales raros
+    const porcentajeStreamer = Math.min(100, Math.round((user.horasStream * 100) % 100));
+
+    // Validación de formulario de pago
+    const isFormValid = tarjeta.nombre && tarjeta.num && tarjeta.exp && tarjeta.cvc;
 
     return (
         <div className="container">
@@ -108,8 +119,27 @@ const DashboardUnificado = () => {
                         <button onClick={() => setShowPayModal(false)} className="close-btn">✕</button>
                         <h2 className="text-neon text-center">Pasarela de Pago Segura</h2>
                         <form onSubmit={handleProcesarPago}>
-                            <input className="auth-input" placeholder="Tarjeta" value={tarjeta.num} onChange={e=>setTarjeta({...tarjeta, num:e.target.value})} />
-                            <button className="btn-neon w-100 mt-20">PAGAR</button>
+                            <div style={{marginBottom: '15px'}}>
+                                <label className="text-muted text-small">Titular de la Tarjeta</label>
+                                <input className="auth-input" placeholder="Nombre como aparece en tarjeta" value={tarjeta.nombre} onChange={e=>setTarjeta({...tarjeta, nombre:e.target.value})} required />
+                            </div>
+                            <div style={{marginBottom: '15px'}}>
+                                <label className="text-muted text-small">Número de Tarjeta</label>
+                                <input className="auth-input" type="number" placeholder="0000 0000 0000 0000" value={tarjeta.num} onChange={e=>setTarjeta({...tarjeta, num:e.target.value})} required />
+                            </div>
+                            <div style={{display:'flex', gap:'10px', marginBottom:'20px'}}>
+                                <div style={{flex:1}}>
+                                    <label className="text-muted text-small">Expiración</label>
+                                    <input className="auth-input" placeholder="MM/YY" value={tarjeta.exp} onChange={e=>setTarjeta({...tarjeta, exp:e.target.value})} required />
+                                </div>
+                                <div style={{flex:1}}>
+                                    <label className="text-muted text-small">CVC</label>
+                                    <input className="auth-input" type="password" placeholder="123" value={tarjeta.cvc} onChange={e=>setTarjeta({...tarjeta, cvc:e.target.value})} required />
+                                </div>
+                            </div>
+                            <button disabled={!isFormValid} className="btn-neon w-100" style={{opacity: isFormValid ? 1 : 0.5}}>
+                                {isFormValid ? `PAGAR $${monto/100}` : 'COMPLETE LOS DATOS'}
+                            </button>
                         </form>
                     </div>
                 </div>
@@ -133,6 +163,8 @@ const DashboardUnificado = () => {
                                 <select className="auth-input" style={{width:'auto', display:'inline-block', marginRight:'10px'}} value={monto} onChange={e=>setMonto(Number(e.target.value))}>
                                     <option value="100">100 ($1)</option>
                                     <option value="500">500 ($5)</option>
+                                    <option value="1000">1000 ($10)</option>
+                                    <option value="5000">5000 ($50)</option>
                                 </select>
                                 <button onClick={() => setShowPayModal(true)} className="btn-neon">COMPRAR</button>
                             </div>
@@ -140,11 +172,10 @@ const DashboardUnificado = () => {
                         <div className="stat-card">
                             <h3>Nivel {user.nivelEspectador}</h3>
                             <p className="text-muted">Total XP: {user.puntosXP}</p>
-                            {/* CORRECCIÓN: Agregada la barra de progreso que faltaba */}
                             <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
                                 <div style={{width: `${porcentajeNivel}%`, background:'var(--neon)', height:'100%', transition:'width 0.5s'}}></div>
                             </div>
-                            <p className="text-small text-muted mt-5">Progreso base (aprox)</p>
+                            <p className="text-small text-muted mt-5">Progreso para siguiente nivel</p>
                         </div>
                     </>
                 )}
@@ -164,11 +195,12 @@ const DashboardUnificado = () => {
                         <div className="stat-card">
                             <h3>Nivel Streamer {user.nivelStreamer}</h3>
                             <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
-                                <div style={{width: `${(user.horasStream % 0.01) * 10000}%`, background:'#ff0055', height:'100%'}}></div>
+                                {/* Barra corregida: muestra porcentaje progresivo */}
+                                <div style={{width: `${porcentajeStreamer}%`, background:'#ff0055', height:'100%', transition:'width 0.5s'}}></div>
                             </div>
+                            <p className="text-small text-muted mt-5">{porcentajeStreamer}% para siguiente nivel</p>
                         </div>
 
-                        {/* Configuración NO LINEAL de Niveles */}
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>
                             <h3 className="section-title text-small">⚙️ Configuración de XP por Nivel</h3>
                             <p className="text-muted text-small">Define cuánta XP TOTAL necesita un usuario para alcanzar cada nivel.</p>
