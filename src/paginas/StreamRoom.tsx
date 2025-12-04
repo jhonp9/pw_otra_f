@@ -13,33 +13,30 @@ interface MensajeChat {
 }
 
 const StreamRoom = () => {
-    const { id } = useParams(); // Este es el ID del USUARIO (Streamer)
+    const { id } = useParams(); // ID del Usuario Streamer
     const { user, refreshUser } = useAuth();
     const navigate = useNavigate();
     
-    // Estados de Datos
+    // Datos
     const [streamInfo, setStreamInfo] = useState<any>(null);
     const [chat, setChat] = useState<MensajeChat[]>([]);
     const [mensaje, setMensaje] = useState("");
     const [regalos, setRegalos] = useState<any[]>([]);
     
-    // Estados de UI
+    // UI & Estado
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     const [overlayEvent, setOverlayEvent] = useState<string | null>(null);
     const [streamEnded, setStreamEnded] = useState(false);
-
-    // Estado Streamer
     const [isStreaming, setIsStreaming] = useState(false);
     
-    // <--- CAMBIO CLAVE 1: currentStreamId almacenará el ID de la TRANSMISIÓN única, no del usuario
+    // Lógica Clave: ID único de la sesión de stream actual
     const [currentStreamId, setCurrentStreamId] = useState<number|null>(null);
     const [metaXpStreamer, setMetaXpStreamer] = useState(1000);
     
-    // Refs para polling
     const lastCheckRef = useRef<number>(Date.now());
     const chatEndRef = useRef<HTMLDivElement>(null);
 
-    // 1. CARGA INICIAL
+    // 1. Carga Inicial
     useEffect(() => {
         const fetchDatos = async () => {
             if (id) {
@@ -59,7 +56,7 @@ const StreamRoom = () => {
                     const status = await api.get(`/streams/status/${id}`);
                     if (status.isLive) {
                         setIsStreaming(true);
-                        setCurrentStreamId(status.streamId); // Guardamos el ID de la sesión actual
+                        setCurrentStreamId(status.streamId);
                     } else if (Number(user?.id) !== Number(id)) {
                         setStreamEnded(true);
                     }
@@ -69,44 +66,43 @@ const StreamRoom = () => {
         fetchDatos();
     }, [id, user]);
 
-    // 2. SCROLL AUTOMÁTICO
+    // 2. Scroll chat
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chat]);
 
-    // 3. POLLING PRINCIPAL (Chat y Estado)
+    // 3. POLLING (Chat y Estado)
     useEffect(() => {
         if (!id) return;
 
         const interval = setInterval(async () => {
-            // <--- CAMBIO CLAVE 2: Consultar chat usando currentStreamId (Sesión), no 'id' (Usuario)
-            if (currentStreamId) {
-                try {
-                    const msgs = await api.get(`/chat/${currentStreamId}`);
-                    setChat(msgs);
-                } catch (e) { /* ignore */ }
-            }
-
             // Verificar Estado del Stream
-            if (user?.rol === 'espectador' || (user?.rol === 'streamer' && Number(user.id) !== Number(id))) {
-                try {
-                    const status = await api.get(`/streams/status/${id}`);
-                    if (!status.isLive) {
-                        setStreamEnded(true);
-                        setIsStreaming(false);
-                        setCurrentStreamId(null); // Limpiamos ID si acaba
-                    } else {
-                        setStreamEnded(false);
-                        setIsStreaming(true);
-                        // Importante: Si el espectador llega tarde, aquí obtenemos el ID de sesión
-                        if (status.streamId !== currentStreamId) {
-                            setCurrentStreamId(status.streamId);
-                        }
-                    }
-                } catch (e) { /* ignore */ }
-            }
+            try {
+                const status = await api.get(`/streams/status/${id}`);
+                
+                // Si detectamos un cambio de Stream ID (nuevo stream), limpiamos chat
+                if (status.isLive && status.streamId !== currentStreamId) {
+                    setChat([]); // <--- LIMPIEZA FORZADA AL CAMBIAR DE STREAM
+                    setCurrentStreamId(status.streamId);
+                    setIsStreaming(true);
+                    setStreamEnded(false);
+                } 
+                else if (!status.isLive && isStreaming) {
+                    // Si el stream acaba de terminar
+                    setIsStreaming(false);
+                    setStreamEnded(true);
+                    setCurrentStreamId(null);
+                }
 
-            // Overlay de Eventos (Solo Streamer)
+                // Cargar Chat solo si hay stream activo
+                if (status.streamId) {
+                    const msgs = await api.get(`/chat/${status.streamId}`);
+                    setChat(msgs);
+                }
+
+            } catch (e) { /* ignore */ }
+
+            // Overlay para el Streamer
             if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
                 try {
                     const eventos = await api.get(`/shop/eventos?since=${lastCheckRef.current}`);
@@ -121,17 +117,16 @@ const StreamRoom = () => {
         }, 2000); 
 
         return () => clearInterval(interval);
-    }, [id, user, currentStreamId]); // Agregamos currentStreamId a dependencias
+    }, [id, user, currentStreamId, isStreaming]);
 
     const triggerOverlay = (texto: string) => {
         setOverlayEvent(texto);
         setTimeout(() => setOverlayEvent(null), 5000);
     };
 
-    // 4. MANEJO DE CHAT
+    // 4. Enviar Mensaje
     const handleChat = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Validamos que exista currentStreamId (que el stream esté activo)
         if (!user || !mensaje.trim() || !currentStreamId) return;
 
         const msgContent = mensaje;
@@ -143,26 +138,21 @@ const StreamRoom = () => {
         });
 
         if (resXp.subioNivel) {
-            setModal({ 
-                isOpen: true, 
-                title: '¡LEVEL UP! 🚀', 
-                message: `¡Felicidades! Has alcanzado el Nivel ${resXp.nivel}.` 
-            });
+            setModal({ isOpen: true, title: '¡LEVEL UP! 🚀', message: `¡Nivel ${resXp.nivel} alcanzado!` });
             refreshUser();
         }
 
-        // <--- CAMBIO CLAVE 3: Enviamos currentStreamId al backend
         await api.post('/chat/enviar', {
             userId: user.id,
             nombre: user.nombre,
             contenido: msgContent,
             nivel: resXp.nivel || user.nivelEspectador, 
             rol: user.rol,
-            streamId: currentStreamId // ID de la sesión
+            streamId: currentStreamId
         });
     };
 
-    // 5. ENVIAR REGALO
+    // 5. Enviar Regalo
     const handleEnviarRegalo = async (regalo: any) => {
         if (!user || !currentStreamId) return;
         
@@ -174,61 +164,62 @@ const StreamRoom = () => {
         
         if (res.success) {
             await refreshUser();
-            triggerOverlay(`Enviaste ${regalo.nombre} ${regalo.icono}`);
-
-            // <--- CAMBIO CLAVE 4: Mensaje de sistema con currentStreamId
+            triggerOverlay(`¡REGALO! ${regalo.nombre} ${regalo.icono}`);
+            
             await api.post('/chat/enviar', {
                 userId: user.id,
                 nombre: "SISTEMA",
-                contenido: `${user.nombre} ha enviado ${regalo.nombre} ${regalo.icono} 🎁`,
+                contenido: `${user.nombre} envió ${regalo.nombre} ${regalo.icono} 🎁`,
                 nivel: 0,
                 rol: "sistema",
                 streamId: currentStreamId
             });
 
             if (res.subioNivel) {
-                setModal({ isOpen: true, title: '¡NIVEL SUBIDO!', message: `¡Wow! Tu apoyo te llevó al Nivel ${res.nivel} 🎉` });
+                setModal({ isOpen: true, title: '¡NIVEL SUBIDO!', message: `Nivel ${res.nivel} alcanzado por tu apoyo.` });
             }
         } else {
-            setModal({ isOpen: true, title: 'Ups', message: res.msg || 'Saldo insuficiente' });
+            setModal({ isOpen: true, title: 'Error', message: res.msg || 'Saldo insuficiente' });
         }
     };
 
-    // 6. CONTROL DEL STREAM
+    // 6. Control Stream (Start/Stop)
     const toggleStream = async () => {
         if (!user || user.rol !== 'streamer') return;
 
         if (!isStreaming) {
-            // INICIAR
             const res = await api.post('/streams/start', { 
                 userId: user.id, 
                 titulo: streamInfo.titulo, 
                 categoria: "General" 
             });
-            setCurrentStreamId(res.streamId); // Guardamos nuevo ID
+            setChat([]); // Limpiar chat localmente al iniciar
+            setCurrentStreamId(res.streamId);
             setIsStreaming(true);
             setStreamEnded(false);
-            setChat([]); // <--- ¡LIMPIAMOS EL CHAT LOCALMENTE AL INICIAR!
         } else {
-            // DETENER
             const res = await api.post('/streams/stop', { 
                 userId: user.id, 
                 streamId: currentStreamId 
             });
             setIsStreaming(false);
-            setCurrentStreamId(null); // Reseteamos ID
+            setCurrentStreamId(null);
             
             if (res.subioNivel) {
-                triggerOverlay(`¡SUBISTE A NIVEL DE STREAMER ${res.nivel}! 📈`);
-                setModal({ isOpen:true, title:'¡LEVEL UP STREAMER!', message:`Has subido al nivel ${res.nivel} por tus horas transmitidas.`});
+                setModal({ isOpen:true, title:'¡LEVEL UP STREAMER!', message:`Nivel ${res.nivel} alcanzado.`});
             } else {
-                setModal({ isOpen:true, title:'Stream Finalizado', message:'Tus horas han sido registradas exitosamente.'});
+                setModal({ isOpen:true, title:'Stream Finalizado', message:'Horas registradas.'});
             }
             refreshUser();
         }
     };
 
-    if (!streamInfo) return <div className="text-center mt-40">Cargando sala...</div>;
+    // Calculo de progreso para el espectador
+    const xpNeeded = metaXpStreamer;
+    const currentXp = user ? user.puntosXP % xpNeeded : 0;
+    const progressPercent = Math.min((currentXp / xpNeeded) * 100, 100);
+
+    if (!streamInfo) return <div className="text-center mt-40">Cargando...</div>;
 
     return (
         <div className="stream-room-layout">
@@ -241,58 +232,70 @@ const StreamRoom = () => {
             )}
 
             <div className="video-column">
-                <div className="video-player-container" style={{position: 'relative'}}>
+                <div className="video-player-container">
                     {streamEnded ? (
                         <div style={{textAlign:'center'}}>
                             <h1 className="text-muted" style={{fontSize:'3rem'}}>OFFLINE 💤</h1>
-                            <p>El stream ha finalizado.</p>
-                            <button onClick={()=>navigate('/')} className="btn-regresar mt-20">Ir al Inicio</button>
+                            <button onClick={()=>navigate('/')} className="btn-regresar mt-20">Salir</button>
                         </div>
                     ) : (
                         <h1 className="text-neon" style={{fontSize:'3rem'}}>
-                            {isStreaming ? "EN VIVO 🔴" : "ESPERANDO STREAM..."}
+                            {isStreaming ? "EN VIVO 🔴" : "OFFLINE"}
                         </h1>
                     )}
                 </div>
                 
                 <div className="stream-info-bar">
                     <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
-                        <div className="profile-avatar-small" style={{width:'60px', height:'60px', fontSize:'1.5rem', background: '#333', borderRadius: '50%', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                        <div className="profile-avatar-small" style={{width:'50px', height:'50px', background:'#333', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'bold'}}>
                             {streamInfo.usuario.charAt(0)}
                         </div>
                         <div>
-                            <h2 style={{margin:0}}>{streamInfo.titulo}</h2>
-                            <p className="text-muted">{streamInfo.usuario} • {streamInfo.categoria}</p>
+                            <h3 style={{margin:0}}>{streamInfo.titulo}</h3>
+                            <p className="text-muted text-small">{streamInfo.categoria}</p>
                         </div>
                     </div>
-                    
                     {user?.rol === 'streamer' && Number(user.id) === Number(id) && (
                         <button onClick={toggleStream} className={isStreaming ? "btn-delete" : "btn-neon"}>
-                            {isStreaming ? "TERMINAR STREAM 🔴" : "INICIAR STREAM 📡"}
+                            {isStreaming ? "TERMINAR" : "INICIAR"}
                         </button>
                     )}
                 </div>
             </div>
 
             <div className="chat-column">
+                {/* Barra de progreso de Nivel (Espectador) - REQUERIMIENTO CUMPLIDO */}
+                {user && user.rol === 'espectador' && (
+                    <div style={{padding: '10px', background: '#111', borderBottom: '1px solid #333'}}>
+                        <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.8rem', marginBottom:'5px'}}>
+                            <span className="text-neon">Nivel {user.nivelEspectador}</span>
+                            <span className="text-muted">{Math.floor(currentXp)} / {xpNeeded} XP</span>
+                        </div>
+                        <div style={{width:'100%', height:'6px', background:'#333', borderRadius:'3px'}}>
+                            <div style={{width:`${progressPercent}%`, height:'100%', background:'var(--neon)', borderRadius:'3px', transition:'width 0.3s'}}></div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="chat-messages">
+                    {chat.length === 0 && <div className="text-center text-muted mt-20">¡Sé el primero en saludar! 👋</div>}
                     {chat.map((c, i) => (
-                        <div key={i} className="chat-msg" style={{marginBottom: '8px'}}>
+                        <div key={i} className="chat-msg">
                             {c.rolUsuario === 'sistema' ? (
-                                <div style={{background: 'rgba(0, 255, 65, 0.1)', padding: '5px', borderRadius: '4px', textAlign: 'center', color: 'var(--neon)', fontSize: '0.85rem'}}>
+                                <div style={{background:'rgba(0,255,65,0.1)', padding:'5px', borderRadius:'4px', textAlign:'center', color:'var(--neon)', fontSize:'0.85rem'}}>
                                     {c.contenido}
                                 </div>
                             ) : (
                                 <>
                                     {c.nivelUsuario > 0 && (
-                                        <span className="badge-level" style={{background: '#333', color: 'white', padding: '2px 5px', borderRadius: '4px', fontSize: '0.7rem', marginRight: '5px'}}>
-                                            Lvl {c.nivelUsuario}
+                                        <span style={{background:'#333', padding:'2px 5px', borderRadius:'4px', fontSize:'0.7rem', marginRight:'6px'}}>
+                                            {c.nivelUsuario}
                                         </span>
                                     )}
-                                    <span className={c.rolUsuario === 'streamer' ? "text-neon bold" : "text-white bold"}>
+                                    <span className={c.rolUsuario === 'streamer' ? "text-neon bold" : "bold"}>
                                         {c.usuarioNombre}:
                                     </span> 
-                                    <span style={{marginLeft: '5px', color: '#ccc'}}>{c.contenido}</span>
+                                    <span style={{marginLeft:'5px', color:'#ddd'}}>{c.contenido}</span>
                                 </>
                             )}
                         </div>
@@ -301,29 +304,28 @@ const StreamRoom = () => {
                 </div>
                 
                 <div className="chat-input-area">
-                    <form onSubmit={handleChat} style={{display:'flex', width:'100%', gap:'5px'}}>
+                    <form onSubmit={handleChat} style={{display:'flex', gap:'5px'}}>
                         <input 
                             value={mensaje} 
                             onChange={e=>setMensaje(e.target.value)} 
                             className="chat-input" 
-                            placeholder={isStreaming ? "Escribe..." : "Stream Offline"} 
+                            placeholder={isStreaming ? "Enviar mensaje..." : "Offline"} 
                             disabled={!user || streamEnded || !isStreaming}
                         />
                         <button className="btn-chat" disabled={!user || streamEnded || !isStreaming}>➤</button>
                     </form>
                 </div>
                 
-                {user?.rol === 'espectador' && !streamEnded && isStreaming && (
+                {user?.rol === 'espectador' && isStreaming && (
                     <div className="gifts-panel">
-                        <div style={{display:'flex', justifyContent:'space-between', marginBottom:'10px'}}>
+                        <div style={{display:'flex', justifyContent:'space-between', marginBottom:'5px'}}>
                              <span className="text-small">Saldo: <span className="text-neon">{user.monedas} 💰</span></span>
-                             <span className="text-small">Nivel: {user.nivelEspectador}</span>
                         </div>
                         <div className="gift-grid-compact">
                             {regalos.map(r => (
                                 <button key={r.id} onClick={()=>handleEnviarRegalo(r)} className="gift-btn-compact" disabled={user.monedas < r.costo} title={`Costo: ${r.costo}`}>
-                                    <div style={{fontSize:'1.5rem'}}>{r.icono}</div>
-                                    <div style={{fontSize:'0.8rem'}}>{r.costo}</div>
+                                    <div style={{fontSize:'1.2rem'}}>{r.icono}</div>
+                                    <div style={{fontSize:'0.7rem'}}>{r.costo}</div>
                                 </button>
                             ))}
                         </div>
