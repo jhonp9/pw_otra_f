@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:4000/api'; // O tu URL de Render en producción
+const BASE_URL = 'https://pw-otra-b.onrender.com/api'; // O tu URL de Render en producción
 
 export const api = {
     async get(endpoint: string) {
