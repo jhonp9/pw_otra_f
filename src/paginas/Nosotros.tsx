@@ -1,32 +1,30 @@
 import { Link } from 'react-router-dom';
 
 const Nosotros = () => {
-  // Ahora cada miembro tiene nombre y la ruta de su foto
-  // La ruta empieza con /equipo/... porque está en la carpeta public
   const equipo = [
     { 
       nombre: 'Rodrigo Jesús Sarria Flores', 
-      foto: '/equipo/rodrigo.jpeg', 
+      foto: '/equipo/rodrigo.jpeg',  // <--- CAMBIO AQUÍ (.jpeg)
       rol: 'Full Stack Developer' 
     },
     { 
       nombre: 'Angelo Matius Diaz De la Flor', 
-      foto: '/equipo/angelo.jpeg', 
+      foto: '/equipo/angelo.jpeg',   // <--- CAMBIO AQUÍ (.jpeg)
       rol: 'Frontend Developer' 
     },
     { 
       nombre: 'Franco Egoavil Calderon', 
-      foto: '/equipo/franco.jpeg', 
+      foto: '/equipo/franco.jpeg',   // <--- CAMBIO AQUÍ (.jpeg)
       rol: 'Backend Developer' 
     },
     { 
       nombre: 'Oscar Alfredo Meza Payano', 
-      foto: '/equipo/oscar.jpeg', 
+      foto: '/equipo/oscar.jpeg',    // <--- CAMBIO AQUÍ (.jpeg)
       rol: 'UI/UX Designer' 
     },
     { 
       nombre: 'Cesar Steven Alegre Flores', 
-      foto: '/equipo/cesar.jpeg', 
+      foto: '/equipo/cesar.jpeg',    // <--- CAMBIO AQUÍ (.jpeg)
       rol: 'QA Engineer' 
     }
   ];
@@ -50,14 +48,14 @@ const Nosotros = () => {
                 borderRadius: '50%', 
                 marginBottom: '15px', 
                 border: '3px solid #00ff41',
-                objectFit: 'cover' // Esto asegura que la foto no se deforme
+                objectFit: 'cover'
               }}
-              // Si la foto falla (ej. nombre incorrecto), muestra un avatar por defecto
               onError={(e) => {
+                // Si la imagen falla, muestra un avatar genérico y avisa en consola
+                console.error(`Error cargando imagen: ${miembro.foto}`);
                 (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${miembro.nombre}`;
               }}
             />
-            {/* Lógica para mostrar nombre corto (Primer nombre + Primer apellido) */}
             <h4 style={{ margin: '10px 0', color: 'white', minHeight: '50px' }}>
               {miembro.nombre.split(' ')[0]} {miembro.nombre.split(' ')[2] || ''}
             </h4>
