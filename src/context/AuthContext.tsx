@@ -1,6 +1,8 @@
+// jhonp9/pw_otra_f/pw_otra_f-6420afd1c27951a0e347ec5e5f14f39cefa7bcce/src/context/AuthContext.tsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { api } from '../servicios/api';
 
+// Actualizamos la interfaz para incluir la configuración de niveles
 interface User {
   id: number;
   nombre: string;
@@ -11,7 +13,8 @@ interface User {
   nivelEspectador: number;
   horasStream: number;
   nivelStreamer: number;
-  metaXp: number; // <--- NUEVO CAMPO REQUERIDO
+  metaXp: number; 
+  configNiveles?: string; // <--- CAMBIO IMPORTANTE: Campo para la config JSON
 }
 
 interface AuthContextType {
