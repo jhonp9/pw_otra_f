@@ -25,6 +25,7 @@ const Navbar = () => {
       <div className="nav-links">
         <Link to="/">Explorar</Link>
         <Link to="/nosotros">Nosotros</Link>
+        <Link to="/tyc">Términos y Condiciones</Link>
         
         {user ? (
           <div className="user-menu-container">
