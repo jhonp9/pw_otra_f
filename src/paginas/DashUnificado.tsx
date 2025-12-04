@@ -1,21 +1,21 @@
-// frontend/src/paginas/DashUnificado.tsx
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../servicios/api';
 import MiModal from '../componentes/MiModal';
 import { Link, useNavigate } from 'react-router-dom';
-import { formatHoursToHHMMSS } from '../utils/formatTime'; // Importar nueva utilidad
+import { formatHoursToHHMMSS } from '../utils/formatTime';
 
 const DashboardUnificado = () => {
     const { user, refreshUser } = useAuth();
     const navigate = useNavigate();
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     
+    // Estados para compra de monedas
     const [monto, setMonto] = useState(100);
     const [showPayModal, setShowPayModal] = useState(false);
     const [tarjeta, setTarjeta] = useState({ nombre: '', num: '', cvc: '', exp: '' });
     
+    // Configuración de Niveles
     const [nivelesConfig, setNivelesConfig] = useState<Record<string, number>>({});
     const [nuevoNivelKey, setNuevoNivelKey] = useState(2);
     const [nuevoNivelXP, setNuevoNivelXP] = useState(2000);
@@ -100,12 +100,10 @@ const DashboardUnificado = () => {
     const xpActualNivel = user.puntosXP % xpMeta;
     const porcentajeNivel = (xpActualNivel / xpMeta) * 100;
 
-    // --- CÁLCULO VISUAL STREAMER (Ciclo de 30 segundos) ---
-    // Convertimos las horas almacenadas a segundos totales
-    const totalSegundos = user.horasStream * 3600;
-    // Ciclo de nivel = 30 segundos
-    const segundosEnNivelActual = totalSegundos % 30;
-    const porcentajeStreamer = Math.min(100, (segundosEnNivelActual / 30) * 100);
+    // --- CÁLCULO VISUAL STREAMER ---
+    const cicloNivel = 0.01; // 36 segundos
+    const progresoActual = user.horasStream % cicloNivel;
+    const porcentajeStreamer = Math.min(100, (progresoActual / cicloNivel) * 100);
 
     const isFormValid = tarjeta.nombre && tarjeta.num && tarjeta.exp && tarjeta.cvc;
 
@@ -188,7 +186,7 @@ const DashboardUnificado = () => {
                         </div>
 
                         <div className="stat-card">
-                            {/* CAMBIO: Mostrar tiempo en HH:MM:SS */}
+                            {/* MOSTRAR TIEMPO TOTAL ACUMULADO EN FORMATO HH:MM:SS */}
                             <h3>{formatHoursToHHMMSS(user.horasStream)}</h3>
                             <p className="text-muted">Tiempo Total Transmitido</p>
                         </div>
@@ -196,14 +194,13 @@ const DashboardUnificado = () => {
                         <div className="stat-card">
                             <h3>Nivel Streamer {user.nivelStreamer}</h3>
                             <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
-                                {/* CAMBIO: Barra basada en 30 segundos */}
                                 <div style={{width: `${porcentajeStreamer}%`, background:'#ff0055', height:'100%', transition:'width 0.5s'}}></div>
                             </div>
-                            <p className="text-small text-muted mt-5">{Math.round(porcentajeStreamer)}% para el siguiente nivel (cada 30s)</p>
+                            <p className="text-small text-muted mt-5">{Math.round(porcentajeStreamer)}% para el siguiente nivel</p>
                         </div>
 
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>
-                            <h3 className="section-title text-small">⚙️ Configuración de XP por Nivel (Espectadores)</h3>
+                            <h3 className="section-title text-small">⚙️ Configuración de XP por Nivel</h3>
                             <p className="text-muted text-small">Define cuánta XP TOTAL necesita un usuario para alcanzar cada nivel.</p>
                             
                             <div style={{display:'flex', gap:'10px', alignItems:'flex-end', marginBottom:'20px'}}>
