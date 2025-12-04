@@ -34,8 +34,8 @@ const StreamRoom = () => {
     const [metaXpStreamer, setMetaXpStreamer] = useState(1000);
     const [configNivelesStreamer, setConfigNivelesStreamer] = useState<Record<string, number>>({});
     
-    // Referencia para control de polling de eventos
-    const lastCheckRef = useRef<number>(Date.now());
+    // Inicializar la referencia de tiempo con un pequeño margen atrás para no perder eventos al cargar
+    const lastCheckRef = useRef<number>(Date.now() - 5000); 
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     // 1. Carga Inicial de Datos de la Sala
@@ -137,23 +137,17 @@ const StreamRoom = () => {
                         // Tomar el último evento (para simplificar la UI)
                         const ultimo = eventos[eventos.length - 1];
                         
-                        // 1. Mostrar Modal de Alerta
-                        setModal({
-                            isOpen: true,
-                            title: '¡REGALO RECIBIDO! 🎁',
-                            message: ultimo.detalle 
-                        });
-
-                        // 2. Activar Overlay Flotante en video
+                        // 1. Activar Overlay Flotante en video
                         triggerOverlay(ultimo.detalle);
                         
                         // Actualizar referencia de tiempo para no repetir eventos
                         // Usamos la fecha del último evento + 1ms para asegurar
-                        lastCheckRef.current = new Date(ultimo.fecha).getTime(); 
+                        lastCheckRef.current = new Date(ultimo.fecha).getTime() + 1; 
                     } else {
-                        // Si no hay eventos, simplemente avanzamos el reloj para mantener sincronía
-                        // (opcional, pero ayuda si el reloj del server y cliente difieren mucho)
-                        lastCheckRef.current = Date.now();
+                        // Avanzamos el reloj localmente para evitar desfases grandes, pero con cuidado
+                        // Mejor estrategia: solo actualizar lastCheckRef si recibimos eventos o al montar
+                        // (Si actualizamos aquí siempre a Date.now(), podríamos saltar un evento si el server tiene lag)
+                        // Dejamos lastCheckRef tal cual hasta recibir el próximo evento.
                     }
                 }
             } catch (e) { /* ignore */ }

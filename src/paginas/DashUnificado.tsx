@@ -100,11 +100,10 @@ const DashboardUnificado = () => {
     const xpActualNivel = user.puntosXP % xpMeta;
     const porcentajeNivel = (xpActualNivel / xpMeta) * 100;
 
-    // Cálculo visual Streamer (Corregido)
-    // Supongamos que cada 0.01 horas es 1 nivel (tu lógica de backend)
-    // Progreso = (Horas totales % 0.01) / 0.01 * 100
-    // Multiplicamos por 10000 y sacamos modulo 100 para evitar decimales raros
-    const porcentajeStreamer = Math.min(100, Math.round((user.horasStream * 100) % 100));
+    // --- CÁLCULO VISUAL STREAMER CORREGIDO ---
+    // Regla: 1 Nivel = 0.01 horas. 
+    // Ejemplo: 0.015 horas -> (0.015 * 100) = 1.5 -> % 1 = 0.5 -> * 100 = 50%
+    const porcentajeStreamer = Math.floor(((user.horasStream * 100) % 1) * 100);
 
     // Validación de formulario de pago
     const isFormValid = tarjeta.nombre && tarjeta.num && tarjeta.exp && tarjeta.cvc;
@@ -188,17 +187,16 @@ const DashboardUnificado = () => {
                         </div>
 
                         <div className="stat-card">
-                            <h3>{user.horasStream.toFixed(2)}h</h3>
+                            <h3>{user.horasStream.toFixed(3)}h</h3>
                             <p className="text-muted">Horas Totales</p>
                         </div>
                         
                         <div className="stat-card">
                             <h3>Nivel Streamer {user.nivelStreamer}</h3>
                             <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
-                                {/* Barra corregida: muestra porcentaje progresivo */}
                                 <div style={{width: `${porcentajeStreamer}%`, background:'#ff0055', height:'100%', transition:'width 0.5s'}}></div>
                             </div>
-                            <p className="text-small text-muted mt-5">{porcentajeStreamer}% para siguiente nivel</p>
+                            <p className="text-small text-muted mt-5">{porcentajeStreamer}% para siguiente nivel (Meta: 0.01h)</p>
                         </div>
 
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>
