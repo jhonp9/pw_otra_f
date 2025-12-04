@@ -5,7 +5,7 @@ interface Props {
   onClose: () => void;
   type: 'confirm' | 'alert'; // 'confirm' para borrar/decidir, 'alert' para avisos
   title: string;
-  message: string;
+  message: string | React.ReactNode;
   onConfirm?: () => void; // Solo para tipo 'confirm'
 }
 

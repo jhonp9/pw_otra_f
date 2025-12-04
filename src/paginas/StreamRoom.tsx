@@ -4,14 +4,23 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../servicios/api';
 import MiModal from '../componentes/MiModal';
 
+// Agregar interface para tipar mejor el chat
+interface MensajeChat {
+    user: string;
+    msg: string;
+    nivel: number; // Req 13: Nivel en chat
+    rol: string;
+}
+
 const StreamRoom = () => {
     const { id } = useParams();
     const { user, refreshUser } = useAuth();
     const [streamInfo, setStreamInfo] = useState<any>(null); // Datos del stream
-    const [chat, setChat] = useState<{user:string, msg:string}[]>([]);
+    const [chat, setChat] = useState<MensajeChat[]>([]);
     const [mensaje, setMensaje] = useState("");
     const [regalos, setRegalos] = useState<any[]>([]);
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
+    
     
     // Estado Overlay (Animación para Streamer y Espectadores)
     const [overlayGift, setOverlayGift] = useState<string | null>(null);
@@ -43,15 +52,29 @@ const StreamRoom = () => {
         e.preventDefault();
         if (!user || !mensaje.trim()) return;
 
-        // Backend XP
-        await api.post('/user/chat-xp', { userId: user.id });
+        // Backend XP (Ahora devuelve si subió de nivel)
+        const res = await api.post('/user/chat-xp', { userId: user.id });
         
-        // Actualizar UI localmente
-        setChat([...chat, { user: user.nombre, msg: mensaje }]);
+        // Req 14: Notificación de subida de nivel por chat
+        if (res.subioNivel) {
+            setModal({ 
+                isOpen: true, 
+                title: '¡SUBISTE DE NIVEL! 🚀', 
+                message: `¡Increíble! Has alcanzado el Nivel de Espectador ${res.nivel} solo por chatear.` 
+            });
+            refreshUser();
+        }
+        
+        // Req 13: Mostrar nivel en el chat localmente
+        const nuevoMensaje: MensajeChat = {
+            user: user.nombre,
+            msg: mensaje,
+            nivel: res.nivel || user.nivelEspectador,
+            rol: user.rol
+        };
+
+        setChat([...chat, nuevoMensaje]);
         setMensaje("");
-        
-        // Refrescar usuario para ver si subió de nivel por chat (podría optimizarse)
-        refreshUser();
     };
 
     // 3. Enviar Regalo
@@ -68,7 +91,12 @@ const StreamRoom = () => {
             setTimeout(() => setOverlayGift(null), 4000);
 
             // Mensaje en Chat
-            setChat([...chat, { user: "SISTEMA", msg: `${user.nombre} ha enviado ${regalo.nombre} 🎁` }]);
+            setChat([...chat, { 
+                user: "SISTEMA", 
+                msg: `${user.nombre} ha enviado ${regalo.nombre} 🎁`,
+                nivel: 0,           // ← Add default nivel
+                rol: "sistema"      // ← Add rol
+                }]);
 
             // Alerta de Nivel
             if (res.subioNivel) {
@@ -150,7 +178,23 @@ const StreamRoom = () => {
                 <div className="chat-messages">
                     {chat.map((c, i) => (
                         <p key={i} className="chat-msg">
-                            <span className="text-neon bold">{c.user}:</span> {c.msg}
+                            {/* Req 13: Badge de Nivel */}
+                            <span className="badge-level" style={{
+                                background: '#333', 
+                                color: 'white', 
+                                padding: '2px 5px', 
+                                borderRadius: '4px', 
+                                fontSize: '0.7rem',
+                                marginRight: '5px'
+                            }}>
+                                Lvl {c.nivel}
+                            </span>
+                            
+                            {/* Nombre con color según rol */}
+                            <span className={c.rol === 'streamer' ? "text-neon bold" : "text-white bold"}>
+                                {c.user}:
+                            </span> 
+                            <span style={{marginLeft: '5px', color: '#ccc'}}>{c.msg}</span>
                         </p>
                     ))}
                 </div>

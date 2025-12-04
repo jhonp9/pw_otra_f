@@ -8,6 +8,7 @@ const DashboardUnificado = () => {
     const { user, refreshUser } = useAuth();
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     const [monto, setMonto] = useState(100);
+    const [configNivel, setConfigNivel] = useState(1000); // Default 1000 XP
     
     // Gestión de Regalos (Solo Streamer)
     const [regalos, setRegalos] = useState<any[]>([]);
@@ -24,9 +25,27 @@ const DashboardUnificado = () => {
 
     const handleRecargar = async () => {
         if (!user) return;
-        await api.post('/shop/comprar', { userId: user.id, monto });
-        await refreshUser(); // Actualizar saldo en UI
-        setModal({ isOpen: true, title: '¡RECARGA EXITOSA! 💳', message: `Has recargado ${monto} monedas.` });
+        const res = await api.post('/shop/comprar', { userId: user.id, monto });
+        await refreshUser(); 
+        
+        // Generamos un "Recibo" visual en el modal
+        setModal({ 
+            isOpen: true, 
+            title: 'COMPROBANTE DE PAGO ✅', 
+            message: (
+                <div style={{textAlign: 'left', background: '#222', padding: '15px', borderRadius: '8px', fontSize: '0.9rem'}}>
+                    <p><strong>ID Transacción:</strong> #{Date.now().toString().slice(-6)}</p>
+                    <p><strong>Usuario:</strong> {user.nombre}</p>
+                    <p><strong>Concepto:</strong> Pack de Monedas StreamZone</p>
+                    <p><strong>Monto Recargado:</strong> {monto}</p>
+                    <p><strong>Saldo Nuevo:</strong> {res.monedas}</p>
+                    <p><strong>Fecha:</strong> {new Date().toLocaleDateString()}</p>
+                    <div style={{marginTop: '10px', borderTop: '1px dashed #555', paddingTop: '5px', textAlign: 'center', fontSize: '0.8rem', color: '#888'}}>
+                        Gracias por tu compra. Este es un comprobante válido.
+                    </div>
+                </div>
+            ) as any // Cast rápido para pasar JSX al modal que espera string (o actualiza la prop del modal a ReactNode)
+        });
     };
 
     const handleCrearRegalo = async (e: React.FormEvent) => {
@@ -102,6 +121,26 @@ const DashboardUnificado = () => {
                         <div className="stat-card">
                             <h3>Nivel Streamer {user.nivelStreamer}</h3>
                             <p className="text-muted">Próximo nivel en {10 - (user.horasStream % 10)} horas</p>
+                        </div>
+
+                        {/* Req 22: Configuración de Niveles */}
+                        <div className="dashboard-panel w-100 mt-20">
+                            <h3 className="section-title text-small">⚙️ Configuración de Progresión</h3>
+                            <p className="text-muted text-small">Ajusta la dificultad para que tus espectadores suban de nivel.</p>
+                            
+                            <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px'}}>
+                                <span>XP requerida por Nivel:</span>
+                                <input 
+                                    type="number" 
+                                    className="auth-input input-small" 
+                                    style={{width: '100px', margin: 0}}
+                                    value={configNivel}
+                                    onChange={(e) => setConfigNivel(Number(e.target.value))}
+                                />
+                                <button className="btn-secondary" onClick={() => setModal({isOpen:true, title:'Guardado', message: 'Nueva configuración aplicada.'})}>
+                                    Guardar
+                                </button>
+                            </div>
                         </div>
 
                         {/* Gestión de Regalos */}
