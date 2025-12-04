@@ -1,4 +1,3 @@
-// jhonp9/pw_otra_f/pw_otra_f-6420afd1c27951a0e347ec5e5f14f39cefa7bcce/src/paginas/DashUnificado.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../servicios/api';
@@ -94,7 +93,7 @@ const DashboardUnificado = () => {
 
     if (!user) return <div className="container text-center text-neon mt-40">Cargando...</div>;
 
-    // Cálculo visual simple para espectador (usando lineal como fallback visual)
+    // Cálculo visual simple para espectador (usando lineal como fallback visual en el dashboard global)
     const xpMeta = 1000; 
     const xpActualNivel = user.puntosXP % xpMeta;
     const porcentajeNivel = (xpActualNivel / xpMeta) * 100;
@@ -141,6 +140,11 @@ const DashboardUnificado = () => {
                         <div className="stat-card">
                             <h3>Nivel {user.nivelEspectador}</h3>
                             <p className="text-muted">Total XP: {user.puntosXP}</p>
+                            {/* CORRECCIÓN: Agregada la barra de progreso que faltaba */}
+                            <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
+                                <div style={{width: `${porcentajeNivel}%`, background:'var(--neon)', height:'100%', transition:'width 0.5s'}}></div>
+                            </div>
+                            <p className="text-small text-muted mt-5">Progreso base (aprox)</p>
                         </div>
                     </>
                 )}
@@ -159,13 +163,12 @@ const DashboardUnificado = () => {
                         
                         <div className="stat-card">
                             <h3>Nivel Streamer {user.nivelStreamer}</h3>
-                            {/* Progreso basado en 0.01 horas por nivel */}
                             <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
                                 <div style={{width: `${(user.horasStream % 0.01) * 10000}%`, background:'#ff0055', height:'100%'}}></div>
                             </div>
                         </div>
 
-                        {/* REQ: Configuración NO LINEAL de Niveles */}
+                        {/* Configuración NO LINEAL de Niveles */}
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>
                             <h3 className="section-title text-small">⚙️ Configuración de XP por Nivel</h3>
                             <p className="text-muted text-small">Define cuánta XP TOTAL necesita un usuario para alcanzar cada nivel.</p>
