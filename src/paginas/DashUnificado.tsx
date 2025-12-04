@@ -101,9 +101,14 @@ const DashboardUnificado = () => {
     const porcentajeNivel = (xpActualNivel / xpMeta) * 100;
 
     // --- CÁLCULO VISUAL STREAMER CORREGIDO ---
-    // Regla: 1 Nivel = 0.01 horas. 
-    // Ejemplo: 0.015 horas -> (0.015 * 100) = 1.5 -> % 1 = 0.5 -> * 100 = 50%
-    const porcentajeStreamer = Math.floor(((user.horasStream * 100) % 1) * 100);
+    // Meta: Subir de nivel cada 0.01 horas.
+    // 1. Convertimos a entero multiplicando por 1000 para evitar errores de flotantes (0.01 -> 10)
+    // 2. Usamos modulo para ver el progreso dentro del ciclo actual.
+    // Ejemplo: 0.015h -> 15.  15 % 10 = 5.  (5/10)*100 = 50%
+    const horasEnteras = Math.round(user.horasStream * 1000); 
+    const metaCiclo = 10; // 0.01 * 1000
+    const progresoCiclo = horasEnteras % metaCiclo; 
+    const porcentajeStreamer = Math.min(100, Math.round((progresoCiclo / metaCiclo) * 100));
 
     // Validación de formulario de pago
     const isFormValid = tarjeta.nombre && tarjeta.num && tarjeta.exp && tarjeta.cvc;
@@ -194,9 +199,10 @@ const DashboardUnificado = () => {
                         <div className="stat-card">
                             <h3>Nivel Streamer {user.nivelStreamer}</h3>
                             <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
+                                {/* Barra corregida */}
                                 <div style={{width: `${porcentajeStreamer}%`, background:'#ff0055', height:'100%', transition:'width 0.5s'}}></div>
                             </div>
-                            <p className="text-small text-muted mt-5">{porcentajeStreamer}% para siguiente nivel (Meta: 0.01h)</p>
+                            <p className="text-small text-muted mt-5">{porcentajeStreamer}% para el siguiente nivel (cada 0.01h)</p>
                         </div>
 
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>
