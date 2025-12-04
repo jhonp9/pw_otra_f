@@ -29,14 +29,14 @@ const StreamRoom = () => {
     const [isStreaming, setIsStreaming] = useState(false);
     const [currentStreamId, setCurrentStreamId] = useState<number|null>(null);
     
-    // Configuración de Niveles del Streamer
+    // Configuración de Niveles
     const [metaXpStreamer, setMetaXpStreamer] = useState(1000);
     const [configNivelesStreamer, setConfigNivelesStreamer] = useState<Record<string, number>>({});
     
     const lastCheckRef = useRef<number>(Date.now());
     const chatEndRef = useRef<HTMLDivElement>(null);
 
-    // Carga inicial
+    // 1. Carga Inicial
     useEffect(() => {
         const fetchDatos = async () => {
             if (id) {
@@ -44,7 +44,6 @@ const StreamRoom = () => {
                     const streamerData = await api.get(`/user/${id}`);
                     setMetaXpStreamer(streamerData.metaXp || 1000);
                     
-                    // Parsear configuración de niveles personalizada
                     try {
                         const config = streamerData.configNiveles ? JSON.parse(streamerData.configNiveles) : {};
                         setConfigNivelesStreamer(config);
@@ -76,7 +75,7 @@ const StreamRoom = () => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chat]);
 
-    // Intervalo Lento (36s) - Pulse y Estado
+    // 2. INTERVALO LENTO (36s) - Pulse del Streamer (Nivel) y Estado
     useEffect(() => {
         if (!id) return;
         const slowInterval = setInterval(async () => {
@@ -96,7 +95,9 @@ const StreamRoom = () => {
 
                 if (user?.rol === 'streamer' && Number(user.id) === Number(id) && isStreaming && currentStreamId) {
                     const pulseRes = await api.post('/streams/pulse', { userId: user.id, streamId: currentStreamId });
+                    
                     if (pulseRes.subioNivel) {
+                        // Modal automático de Nivel para el Streamer
                         setModal({ 
                             isOpen: true, 
                             title: '¡LEVEL UP STREAMER! 🎉', 
@@ -110,24 +111,41 @@ const StreamRoom = () => {
         return () => clearInterval(slowInterval);
     }, [id, user, currentStreamId, isStreaming]);
 
-    // Intervalo Rápido (3s) - Chat y Eventos
+    // 3. INTERVALO RÁPIDO (3s) - Chat y Eventos (Regalos recibidos)
     useEffect(() => {
         if (!currentStreamId) return;
+        
         const fastInterval = setInterval(async () => {
             try {
+                // a) Actualizar Chat
                 const msgs = await api.get(`/chat/${currentStreamId}`);
                 setChat(msgs);
 
+                // b) Chequear Eventos (Solo para el Streamer)
                 if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
                     const eventos = await api.get(`/shop/eventos?since=${lastCheckRef.current}`);
+                    
                     if (eventos && eventos.length > 0) {
                         const ultimo = eventos[eventos.length - 1];
+                        
+                        // !!! AQUÍ ESTÁ LA SOLUCIÓN !!!
+                        // Lanzar el MODAL explícitamente cuando llega un regalo
+                        setModal({
+                            isOpen: true,
+                            title: '¡REGALO RECIBIDO! 🎁',
+                            message: ultimo.detalle // Ej: "Juan envió Corazón"
+                        });
+
+                        // También mantenemos el overlay flotante por si acaso
                         triggerOverlay(ultimo.detalle);
+                        
+                        // Actualizamos la fecha para no repetir el mismo evento
                         lastCheckRef.current = Date.now();
                     }
                 }
             } catch (e) { /* ignore */ }
         }, 3000);
+        
         return () => clearInterval(fastInterval);
     }, [currentStreamId, user, id]);
 
@@ -164,6 +182,10 @@ const StreamRoom = () => {
 
     const handleEnviarRegalo = async (regalo: any) => {
         if (!user || !currentStreamId) return;
+        
+        // Modal de proceso (opcional, para feedback inmediato)
+        // setModal({ isOpen: true, title: 'Enviando...', message: 'Procesando...' });
+
         const res = await api.post('/shop/enviar', { 
             viewerId: user.id, 
             regaloId: regalo.id,
@@ -172,8 +194,18 @@ const StreamRoom = () => {
         
         if (res.success) {
             await refreshUser();
-            triggerOverlay(`¡ENVIASTE ${regalo.nombre}! ${regalo.icono}`);
             
+            // 1. Overlay visual para el espectador
+            triggerOverlay(`¡ENVIASTE ${regalo.nombre}!`);
+            
+            // 2. MODAL DE CONFIRMACIÓN PARA EL ESPECTADOR
+            setModal({ 
+                isOpen: true, 
+                title: '¡REGALO ENVIADO! 🚀', 
+                message: `Has enviado ${regalo.nombre} exitosamente.` 
+            });
+            
+            // 3. Mensaje en chat
             await api.post('/chat/enviar', {
                 userId: user.id,
                 nombre: "SISTEMA",
@@ -183,8 +215,11 @@ const StreamRoom = () => {
                 streamId: currentStreamId
             });
 
+            // 4. Modal si sube de nivel (con un pequeño delay para no pisar el anterior)
             if (res.subioNivel) {
-                setTimeout(() => setModal({ isOpen: true, title: '¡NIVEL SUBIDO!', message: `Nivel ${res.nivel}!` }), 1000);
+                setTimeout(() => {
+                    setModal({ isOpen: true, title: '¡NIVEL SUBIDO!', message: `¡Felicidades! Ahora eres nivel ${res.nivel}.` });
+                }, 2000);
             }
         } else {
             setModal({ isOpen: true, title: 'Error', message: res.msg || 'Saldo insuficiente' });
@@ -208,34 +243,21 @@ const StreamRoom = () => {
         }
     };
 
-    // CÁLCULO DE PROGRESO (AQUÍ USAMOS metaXpStreamer)
+    // Cálculo de Progreso Espectador
     const calcularProgreso = () => {
         if (!user) return { current: 0, target: 1000, percent: 0 };
-        
         const currentLvl = user.nivelEspectador;
         const nextLvl = currentLvl + 1;
-        
-        // 1. Buscar si hay config específica para el siguiente nivel
         let targetXp = configNivelesStreamer[nextLvl.toString()];
-        
-        // 2. Si no hay config específica, usar el fallback lineal (metaXpStreamer)
         if (!targetXp) {
-            // Ejemplo: Nivel 1 -> Meta 1000. Nivel 2 -> Meta 2000.
             targetXp = currentLvl * metaXpStreamer;
-            // Si el usuario ya tiene más XP que la meta lineal (por cambios de config), ajustar
             if (user.puntosXP >= targetXp) targetXp = user.puntosXP + metaXpStreamer;
         }
-
-        // XP necesaria desde el nivel anterior (para que la barra empiece vacía al subir de nivel)
-        // Estimación del "piso" del nivel actual
         const prevTargetXp = configNivelesStreamer[currentLvl.toString()] || ((currentLvl - 1) * metaXpStreamer);
-        
         const totalLevelRange = targetXp - prevTargetXp;
         const currentLevelProgress = user.puntosXP - prevTargetXp;
-        
         let percent = (currentLevelProgress / totalLevelRange) * 100;
-        percent = Math.max(0, Math.min(100, percent)); // Limitar entre 0 y 100
-
+        percent = Math.max(0, Math.min(100, percent));
         return { current: user.puntosXP, target: targetXp, percent };
     };
 
@@ -247,12 +269,13 @@ const StreamRoom = () => {
         <div className="stream-room-layout">
             <MiModal isOpen={modal.isOpen} onClose={()=>setModal({...modal, isOpen:false})} type="alert" title={modal.title} message={modal.message}/>
             
+            {/* OVERLAY FLOTANTE (Visible sobre el video) */}
             {overlayEvent && (
                 <div style={{
-                    position: 'fixed', top: '25%', left: '50%', transform: 'translate(-50%, -50%)',
-                    background: 'rgba(0,0,0,0.95)', border: '3px solid var(--neon)', color: 'white',
-                    padding: '30px', borderRadius: '15px', zIndex: 9999,
-                    boxShadow: '0 0 40px var(--neon)', animation: 'bounceIn 0.5s', textAlign: 'center'
+                    position: 'fixed', top: '20%', left: '50%', transform: 'translate(-50%, -50%)',
+                    background: 'rgba(0,0,0,0.9)', border: '4px solid var(--neon)', color: 'white',
+                    padding: '30px', borderRadius: '20px', zIndex: 9999,
+                    boxShadow: '0 0 50px var(--neon)', animation: 'bounceIn 0.5s', textAlign: 'center', minWidth: '300px'
                 }}>
                     <h1 className="text-neon" style={{fontSize:'2rem', margin:0}}>🎁 EVENTO</h1>
                     <h2 style={{fontSize:'1.5rem', margin:'10px 0'}}>{overlayEvent}</h2>
@@ -281,7 +304,7 @@ const StreamRoom = () => {
             </div>
 
             <div className="chat-column">
-                {/* BARRA DE PROGRESO (Corregido: ahora se muestra) */}
+                {/* BARRA DE PROGRESO */}
                 {user && user.rol === 'espectador' && (
                     <div style={{padding: '15px', background: '#111', borderBottom: '1px solid #333'}}>
                         <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.8rem', marginBottom:'5px'}}>
