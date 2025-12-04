@@ -1,3 +1,4 @@
+// jhonp9/pw_otra_f/pw_otra_f-9f1b6a4baa37b2bcf11c6cd1b39d10e8ab587935/src/paginas/DashUnificado.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../servicios/api';
@@ -15,13 +16,21 @@ const DashboardUnificado = () => {
     const [showPayModal, setShowPayModal] = useState(false);
     const [tarjeta, setTarjeta] = useState({ nombre: '', num: '', cvc: '', exp: '' });
     
-    // Configuración de Niveles
+    // Configuración de Niveles (Streamer)
     const [nivelesConfig, setNivelesConfig] = useState<Record<string, number>>({});
     const [nuevoNivelKey, setNuevoNivelKey] = useState(2);
     const [nuevoNivelXP, setNuevoNivelXP] = useState(2000);
     
     const [regalos, setRegalos] = useState<any[]>([]);
     const [nuevoRegalo, setNuevoRegalo] = useState({ nombre: '', costo: 0, puntos: 0, icono: '🎁' });
+
+    // 1. Auto-refresh para ver incremento de horas en tiempo real
+    useEffect(() => {
+        const interval = setInterval(() => {
+            refreshUser(); // Actualiza user.horasStream desde el backend
+        }, 5000); 
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         if (user?.rol === 'streamer') {
@@ -35,7 +44,7 @@ const DashboardUnificado = () => {
                 } catch(e) { setNivelesConfig({}) }
             }
         }
-    }, [user]);
+    }, [user?.rol]); // Dependencia corregida a user.rol para evitar bucle infinito si user cambia
 
     const cargarRegalos = async () => {
         const data = await api.get('/shop/regalos');
@@ -101,9 +110,11 @@ const DashboardUnificado = () => {
     const porcentajeNivel = (xpActualNivel / xpMeta) * 100;
 
     // --- CÁLCULO VISUAL STREAMER ---
-    const cicloNivel = 0.01; // 36 segundos
-    const progresoActual = user.horasStream % cicloNivel;
-    const porcentajeStreamer = Math.min(100, (progresoActual / cicloNivel) * 100);
+    // Regla: 30 segundos para subir de nivel.
+    // 30 seg = 0.008333 horas.
+    const cicloNivelHoras = 30 / 3600; 
+    const progresoActual = user.horasStream % cicloNivelHoras;
+    const porcentajeStreamer = Math.min(100, (progresoActual / cicloNivelHoras) * 100);
 
     const isFormValid = tarjeta.nombre && tarjeta.num && tarjeta.exp && tarjeta.cvc;
 
@@ -186,8 +197,8 @@ const DashboardUnificado = () => {
                         </div>
 
                         <div className="stat-card">
-                            {/* MOSTRAR TIEMPO TOTAL ACUMULADO EN FORMATO HH:MM:SS */}
-                            <h3>{formatHoursToHHMMSS(user.horasStream)}</h3>
+                            {/* MOSTRAR TIEMPO TOTAL ACUMULADO FORMATEADO */}
+                            <h3 style={{fontFamily:'monospace', fontSize:'2.5rem'}}>{formatHoursToHHMMSS(user.horasStream)}</h3>
                             <p className="text-muted">Tiempo Total Transmitido</p>
                         </div>
                         
@@ -196,7 +207,7 @@ const DashboardUnificado = () => {
                             <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
                                 <div style={{width: `${porcentajeStreamer}%`, background:'#ff0055', height:'100%', transition:'width 0.5s'}}></div>
                             </div>
-                            <p className="text-small text-muted mt-5">{Math.round(porcentajeStreamer)}% para el siguiente nivel</p>
+                            <p className="text-small text-muted mt-5">{Math.round(porcentajeStreamer)}% para el siguiente nivel (cada 30s)</p>
                         </div>
 
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>

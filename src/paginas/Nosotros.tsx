@@ -1,30 +1,34 @@
+// jhonp9/pw_otra_f/pw_otra_f-9f1b6a4baa37b2bcf11c6cd1b39d10e8ab587935/src/paginas/Nosotros.tsx
 import { Link } from 'react-router-dom';
 
 const Nosotros = () => {
+  // NOTA: Como en vite.config.ts la base es '/pw_otra_f/', debemos prefijar las imágenes públicas
+  const BASE_PATH = '/pw_otra_f'; 
+
   const equipo = [
     { 
       nombre: 'Rodrigo Jesús Sarria Flores', 
-      foto: '/equipo/rodrigo.jpeg',  // <--- CAMBIO AQUÍ (.jpeg)
+      foto: `${BASE_PATH}/equipo/rodrigo.jpeg`,
       rol: 'Full Stack Developer' 
     },
     { 
       nombre: 'Angelo Matius Diaz De la Flor', 
-      foto: '/equipo/angelo.jpeg',   // <--- CAMBIO AQUÍ (.jpeg)
+      foto: `${BASE_PATH}/equipo/angelo.jpeg`,
       rol: 'Frontend Developer' 
     },
     { 
       nombre: 'Franco Egoavil Calderon', 
-      foto: '/equipo/franco.jpeg',   // <--- CAMBIO AQUÍ (.jpeg)
+      foto: `${BASE_PATH}/equipo/franco.jpeg`,
       rol: 'Backend Developer' 
     },
     { 
       nombre: 'Oscar Alfredo Meza Payano', 
-      foto: '/equipo/oscar.jpeg',    // <--- CAMBIO AQUÍ (.jpeg)
+      foto: `${BASE_PATH}/equipo/oscar.jpeg`,
       rol: 'UI/UX Designer' 
     },
     { 
       nombre: 'Cesar Steven Alegre Flores', 
-      foto: '/equipo/cesar.jpeg',    // <--- CAMBIO AQUÍ (.jpeg)
+      foto: `${BASE_PATH}/equipo/cesar.jpeg`,
       rol: 'QA Engineer' 
     }
   ];
@@ -51,8 +55,7 @@ const Nosotros = () => {
                 objectFit: 'cover'
               }}
               onError={(e) => {
-                // Si la imagen falla, muestra un avatar genérico y avisa en consola
-                console.error(`Error cargando imagen: ${miembro.foto}`);
+                // Fallback si falla la carga
                 (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${miembro.nombre}`;
               }}
             />

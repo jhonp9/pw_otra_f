@@ -1,10 +1,9 @@
+// jhonp9/pw_otra_f/pw_otra_f-9f1b6a4baa37b2bcf11c6cd1b39d10e8ab587935/src/paginas/StreamRoom.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../servicios/api';
 import MiModal from '../componentes/MiModal';
-// Eliminamos la importación de formatHoursToHHMMSS si no la usamos aquí,
-// ya que usaremos una función local para el cronómetro de sesión.
 
 interface MensajeChat {
     id: number;
@@ -14,11 +13,10 @@ interface MensajeChat {
     rolUsuario: string;
 }
 
-// Definición correcta del estado del Modal
 interface ModalState {
     isOpen: boolean;
     title: string;
-    message: React.ReactNode; // Permite string o JSX
+    message: React.ReactNode; 
 }
 
 const StreamRoom = () => {
@@ -31,7 +29,6 @@ const StreamRoom = () => {
     const [mensaje, setMensaje] = useState("");
     const [regalos, setRegalos] = useState<any[]>([]);
     
-    // Estado del Modal con tipos corregidos
     const [modal, setModal] = useState<ModalState>({ 
         isOpen: false, 
         title: '', 
@@ -44,13 +41,13 @@ const StreamRoom = () => {
     
     // Timer de Sesión
     const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
-    const [sessionDuration, setSessionDuration] = useState(0); // En segundos
+    const [sessionDuration, setSessionDuration] = useState(0); 
 
     const [configNivelesStreamer, setConfigNivelesStreamer] = useState<Record<string, number>>({});
     const [metaXpStreamer, setMetaXpStreamer] = useState(1000); 
     
     const lastProcessedMsgId = useRef<number>(0);
-    const lastEventTime = useRef<number>(Date.now()); 
+    const lastEventTime = useRef<number>(Date.now()); // Marca de tiempo para evitar duplicados en el overlay
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     // 1. Carga Inicial
@@ -149,12 +146,12 @@ const StreamRoom = () => {
         return () => clearInterval(pulseInterval);
     }, [id, user, currentStreamId, isStreaming]);
 
-    // 4. POLLINGS
+    // 4. POLLINGS (CHAT y OVERLAY)
     useEffect(() => {
         if (!currentStreamId) return;
         
         const fastInterval = setInterval(async () => {
-            // Chat
+            // A. Chat Polling
             try {
                 const msgs: MensajeChat[] = await api.get(`/chat/${currentStreamId}`);
                 if (lastProcessedMsgId.current === 0 && msgs.length > 0) {
@@ -169,21 +166,26 @@ const StreamRoom = () => {
                 }
             } catch (e) { /* ignore */ }
 
-            // Eventos Regalo (Overlay Streamer)
+            // B. Eventos Regalo (Overlay Streamer) - REQUERIMIENTO CLAVE
+            // Solo se ejecuta si soy el streamer dueño del canal
             if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
                 try {
                     const eventos = await api.get(`/shop/eventos?userId=${user.id}&since=${lastEventTime.current}`);
                     if (eventos && eventos.length > 0) {
+                        // Actualizar marca de tiempo para no repetir
                         lastEventTime.current = new Date(eventos[eventos.length - 1].fecha).getTime();
                         
+                        // Mostrar Overlay del último regalo
                         const ultimoRegalo = eventos[eventos.length - 1];
                         setModal({
                             isOpen: true,
                             title: '🎁 ¡REGALO RECIBIDO!',
                             message: (
-                                <div>
-                                    <p style={{fontSize: '1.2rem', marginBottom:'10px', color: 'white'}}>{ultimoRegalo.detalle}</p>
-                                    <small className="text-neon">¡Sigue así!</small>
+                                <div style={{textAlign: 'center'}}>
+                                    <p style={{fontSize: '1.5rem', fontWeight: 'bold', color: 'white', margin: '10px 0'}}>
+                                        {ultimoRegalo.detalle}
+                                    </p>
+                                    <div style={{fontSize: '3rem'}}>🎉</div>
                                 </div>
                             )
                         });
@@ -191,7 +193,7 @@ const StreamRoom = () => {
                 } catch(e) { console.error(e); }
             }
 
-        }, 3000); 
+        }, 3000); // Polling cada 3 segundos
         
         return () => clearInterval(fastInterval);
     }, [currentStreamId, user, id]);
@@ -234,6 +236,7 @@ const StreamRoom = () => {
                 title: '¡REGALO ENVIADO! 🚀', 
                 message: `Has enviado ${regalo.nombre} exitosamente.` 
             });
+            // Mensaje automático en chat
             await api.post('/chat/enviar', {
                 userId: user.id,
                 nombre: "SISTEMA",
@@ -270,7 +273,6 @@ const StreamRoom = () => {
         }
     };
 
-    // Función local para formatear el tiempo de sesión
     const formatSessionTime = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
         const m = Math.floor((seconds % 3600) / 60);
@@ -317,7 +319,6 @@ const StreamRoom = () => {
                     ) : (
                         <div style={{textAlign: 'center', width: '100%'}}>
                             <h1 className="text-neon" style={{fontSize:'3rem'}}>{isStreaming ? "EN VIVO 🔴" : "ESPERANDO..."}</h1>
-                            {/* CRONÓMETRO DE SESIÓN */}
                             {isStreaming && (
                                 <h2 style={{fontFamily: 'monospace', fontSize: '2.5rem', marginTop: '10px', color: 'white'}}>
                                     ⏱ {formatSessionTime(sessionDuration)}
