@@ -1,3 +1,4 @@
+// jhonp9/pw_otra_f/pw_otra_f-da43e77ca85f163b483dcad2d37ca90dd34b4584/src/paginas/DashUnificado.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../servicios/api';
@@ -9,6 +10,8 @@ const DashboardUnificado = () => {
     const navigate = useNavigate();
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     const [monto, setMonto] = useState(100);
+    const [showPayModal, setShowPayModal] = useState(false); // Modal Tarjeta
+    const [tarjeta, setTarjeta] = useState({ num: '', cvc: '', exp: '' });
     
     // REQ 22: Estado para la meta de XP
     const [configNivel, setConfigNivel] = useState(1000); 
@@ -20,7 +23,6 @@ const DashboardUnificado = () => {
     useEffect(() => {
         if (user?.rol === 'streamer') {
             cargarRegalos();
-            // Cargar configuración guardada si existe
             if(user.metaXp) setConfigNivel(user.metaXp);
         }
     }, [user]);
@@ -30,7 +32,6 @@ const DashboardUnificado = () => {
         setRegalos(data);
     };
 
-    // REQ 22: Guardar configuración en Backend
     const handleGuardarConfig = async () => {
         if(!user) return;
         try {
@@ -42,16 +43,23 @@ const DashboardUnificado = () => {
         }
     };
 
-    const handleRecargar = async () => {
-        // ... (Misma lógica de recarga que tenías)
+    // REQ 23: Proceso de Pago Simulado
+    const handleProcesarPago = async (e: React.FormEvent) => {
+        e.preventDefault();
         if (!user) return;
-        const res = await api.post('/shop/comprar', { userId: user.id, monto });
-        await refreshUser(); 
-        setModal({ 
-            isOpen: true, 
-            title: 'COMPROBANTE DE PAGO ✅', 
-            message: `Recarga exitosa de ${monto} monedas. Nuevo saldo: ${res.monedas}`
-        });
+        
+        // Simular espera
+        setTimeout(async () => {
+            const res = await api.post('/shop/comprar', { userId: user.id, monto });
+            await refreshUser(); 
+            setShowPayModal(false);
+            setModal({ 
+                isOpen: true, 
+                title: '✅ PAGO EXITOSO', 
+                message: `Se ha enviado un comprobante a ${user.email}. Tu nuevo saldo es: ${res.monedas}`
+            });
+            setTarjeta({ num: '', cvc: '', exp: '' });
+        }, 1500);
     };
 
     const handleCrearRegalo = async (e: React.FormEvent) => {
@@ -70,7 +78,6 @@ const DashboardUnificado = () => {
 
     if (!user) return <div className="container text-center text-neon mt-40">Cargando...</div>;
 
-    // Calcular progreso para espectador usando la meta (user.metaXp o 1000 default)
     const xpMeta = user.metaXp || 1000;
     const xpActualNivel = user.puntosXP % xpMeta;
     const porcentajeNivel = (xpActualNivel / xpMeta) * 100;
@@ -79,6 +86,30 @@ const DashboardUnificado = () => {
         <div className="container">
             <MiModal isOpen={modal.isOpen} onClose={() => setModal({...modal, isOpen:false})} type="alert" title={modal.title} message={modal.message} />
             
+            {/* MODAL DE TARJETA DE CRÉDITO */}
+            {showPayModal && (
+                <div className="modal-overlay">
+                    <div className="modal-box">
+                        <button onClick={() => setShowPayModal(false)} className="close-btn">✕</button>
+                        <h2 className="text-neon text-center">Pasarela de Pago Segura</h2>
+                        <p className="text-center text-muted mb-20">Comprando {monto} monedas por ${(monto/100).toFixed(2)}</p>
+                        <form onSubmit={handleProcesarPago}>
+                            <input 
+                                className="auth-input" placeholder="Número de Tarjeta (16 dígitos)" 
+                                maxLength={16} required 
+                                value={tarjeta.num} onChange={e=>setTarjeta({...tarjeta, num:e.target.value})}
+                            />
+                            <div style={{display:'flex', gap:'10px'}}>
+                                <input className="auth-input" placeholder="MM/YY" required maxLength={5} value={tarjeta.exp} onChange={e=>setTarjeta({...tarjeta, exp:e.target.value})} />
+                                <input className="auth-input" placeholder="CVC" required maxLength={3} value={tarjeta.cvc} onChange={e=>setTarjeta({...tarjeta, cvc:e.target.value})} />
+                            </div>
+                            <button className="btn-neon w-100 mt-20">PAGAR AHORA</button>
+                        </form>
+                        <p className="text-small text-center mt-10 text-muted">🔒 Encriptación de extremo a extremo</p>
+                    </div>
+                </div>
+            )}
+
             <div className="profile-header">
                 <div className="profile-avatar">{user.nombre.charAt(0)}</div>
                 <div>
@@ -88,13 +119,11 @@ const DashboardUnificado = () => {
             </div>
 
             <div className="dashboard-layout">
-                {/* --- PANEL DE ESPECTADOR --- */}
                 {user.rol === 'espectador' && (
                     <>
                         <div className="stat-card money">
                             <h3 className="text-neon">{user.monedas} 💰</h3>
                             <p className="text-muted">Saldo Disponible</p>
-                            {/* REQ 23: Pasarela de Prueba */}
                             <div className="mt-20">
                                 <label className="text-muted text-small">Recargar Saldo</label>
                                 <div style={{display:'flex', gap:'10px', marginTop:'5px', justifyContent:'center'}}>
@@ -103,13 +132,12 @@ const DashboardUnificado = () => {
                                         <option value="500">500 ($5)</option>
                                         <option value="1000">1000 ($10)</option>
                                     </select>
-                                    <button onClick={handleRecargar} className="btn-neon">PAGAR</button>
+                                    <button onClick={() => setShowPayModal(true)} className="btn-neon">COMPRAR</button>
                                 </div>
                             </div>
                         </div>
                         <div className="stat-card">
                             <h3>Nivel {user.nivelEspectador}</h3>
-                            {/* REQ 12: Ver cuánto falta para el siguiente nivel */}
                             <p className="text-muted">Progreso: {xpActualNivel}/{xpMeta} XP</p>
                             <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
                                 <div style={{width: `${porcentajeNivel}%`, background:'var(--neon)', height:'100%', transition:'width 0.5s'}}></div>
@@ -118,10 +146,8 @@ const DashboardUnificado = () => {
                     </>
                 )}
 
-                {/* --- PANEL DE STREAMER --- */}
                 {user.rol === 'streamer' && (
                     <>
-                        {/* REQ 18: Botón para ir a Iniciar Stream */}
                         <div className="stat-card" style={{gridColumn: '1 / -1', border: '2px solid var(--neon)'}}>
                             <h2 style={{marginTop:0}}>Panel de Control</h2>
                             <p className="text-muted mb-20">Gestiona tu transmisión y obtén horas.</p>
@@ -134,13 +160,11 @@ const DashboardUnificado = () => {
                             </button>
                         </div>
 
-                        {/* REQ 6: Ver horas de transmisión */}
                         <div className="stat-card">
                             <h3>{user.horasStream.toFixed(2)}h</h3>
                             <p className="text-muted">Horas Totales</p>
                         </div>
                         
-                        {/* REQ 15: Barra de progreso de Streamer */}
                         <div className="stat-card">
                             <h3>Nivel Streamer {user.nivelStreamer}</h3>
                             <p className="text-muted text-small">Próximo nivel en {(10 - (user.horasStream % 10)).toFixed(1)} horas</p>
@@ -149,27 +173,19 @@ const DashboardUnificado = () => {
                             </div>
                         </div>
 
-                        {/* REQ 22: Configuración de Niveles (Conectado al Backend) */}
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>
                             <h3 className="section-title text-small">⚙️ Dificultad del Canal</h3>
                             <p className="text-muted text-small">Define cuántos XP necesitan tus viewers para subir de nivel.</p>
-                            
                             <div style={{display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px'}}>
                                 <span>XP por Nivel:</span>
                                 <input 
-                                    type="number" 
-                                    className="auth-input input-small" 
-                                    style={{width: '100px', margin: 0}}
-                                    value={configNivel}
-                                    onChange={(e) => setConfigNivel(Number(e.target.value))}
+                                    type="number" className="auth-input input-small" style={{width: '100px', margin: 0}}
+                                    value={configNivel} onChange={(e) => setConfigNivel(Number(e.target.value))}
                                 />
-                                <button className="btn-secondary" onClick={handleGuardarConfig}>
-                                    Guardar Config
-                                </button>
+                                <button className="btn-secondary" onClick={handleGuardarConfig}>Guardar Config</button>
                             </div>
                         </div>
 
-                        {/* Gestión de Regalos */}
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>
                             <h3 className="section-title">Gestionar Regalos</h3>
                             <form onSubmit={handleCrearRegalo} className="gift-form mt-20">
@@ -198,12 +214,10 @@ const DashboardUnificado = () => {
                     </>
                 )}
             </div>
-            
             <div className="text-center mt-40">
                 <Link to="/"><button className="btn-regresar">Volver al Inicio</button></Link>
             </div>
         </div>
     );
 };
-
 export default DashboardUnificado;

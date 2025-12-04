@@ -1,3 +1,4 @@
+// jhonp9/pw_otra_f/pw_otra_f-da43e77ca85f163b483dcad2d37ca90dd34b4584/src/paginas/Inicio.tsx
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../servicios/api';
@@ -6,22 +7,22 @@ const Inicio = () => {
   const [streams, setStreams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchStreams = async () => {
+    try {
+      const data = await api.get('/streams');
+      // Filtramos en frontend también por si acaso el backend devuelve cacheados
+      setStreams(data.filter((s:any) => s.estaEnVivo));
+    } catch (error) {
+      console.error("Error cargando streams:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchStreams = async () => {
-      try {
-        const data = await api.get('/streams'); // Endpoint que creamos en el backend
-        setStreams(data);
-      } catch (error) {
-        console.error("Error cargando streams:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchStreams();
-    // Refrescar lista cada 10 segundos
-    const intervalo = setInterval(fetchStreams, 10000);
-    return () => clearInterval(intervalo);
+    const interval = setInterval(fetchStreams, 5000); // 5 segundos es mejor UX
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -43,10 +44,9 @@ const Inicio = () => {
           <div className="stream-grid">
             {streams.length > 0 ? (
               streams.map((stream) => (
-                <Link to={`/stream/${stream.id}`} key={stream.id} className="link-reset">
+                <Link to={`/stream/${stream.usuarioId}`} key={stream.id} className="link-reset">
                   <div className="stream-card stream-card-real">
                     <div className="stream-thumbnail">
-                      {/* Generamos un gradiente aleatorio basado en el ID para simular miniatura */}
                       <div className="thumb-gradient" style={{
                         background: `linear-gradient(45deg, #111, hsl(${stream.usuario.id * 50}, 70%, 50%) 80%)`
                       }}></div>
@@ -63,7 +63,6 @@ const Inicio = () => {
                         <h4 className="stream-title">{stream.titulo}</h4>
                         <p className="stream-user">{stream.usuario.nombre}</p>
                         <span className="stream-category">{stream.categoria}</span>
-                        {/* Mostramos el nivel del streamer si viene del backend */}
                         <span className="text-muted text-small ml-10"> • Lvl {stream.usuario.nivelStreamer}</span>
                       </div>
                     </div>

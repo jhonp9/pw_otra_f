@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 
 const Nosotros = () => {
-  const equipo = ['Alex Dev', 'Sam Design', 'Chris Backend', 'Taylor QA'];
+  const equipo = ['Rodrigo Jesús Sarria Flores', 'Angelo Matius Diaz', 'Franco Egoavil Calderon', 'Oscar alfredo Meza Payano', 'Angel Rael Valentino Chang Merino'];
 
   return (
     <div className="container text-center">

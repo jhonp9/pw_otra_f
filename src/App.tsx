@@ -11,7 +11,7 @@ import Login from './paginas/Login';
 import Registro from './paginas/Registro';
 import DashboardUnificado from './paginas/DashUnificado';
 import StreamRoom from './paginas/StreamRoom';
-import ConfigUsuario from './paginas/Configusuario';
+import ConfigUsuario from './paginas/ConfigUsuario';
 import type { JSX } from 'react';
 
 // Componente para proteger rutas privadas
