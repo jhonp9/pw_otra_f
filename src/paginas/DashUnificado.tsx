@@ -53,7 +53,6 @@ const DashboardUnificado = () => {
         } catch (error) { console.error("Error cargando regalos", error); }
     };
 
-    // --- FUNCIONES QUE TE DABAN ERROR POR NO USARSE ---
     const agregarConfigNivel = () => {
         setNivelesConfig({ ...nivelesConfig, [nuevoNivelKey]: nuevoNivelXP });
         setNuevoNivelKey(nuevoNivelKey + 1);
@@ -74,7 +73,6 @@ const DashboardUnificado = () => {
             refreshUser();
         } catch (error) { setModal({isOpen:true, title:'Error', message: 'Fallo al guardar.'}); }
     };
-    // --------------------------------------------------
 
     const handleProcesarPago = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -106,15 +104,25 @@ const DashboardUnificado = () => {
 
     if (!user) return <div className="container text-center text-neon mt-40">Cargando...</div>;
 
-    // CÁLCULOS VISUALES
+    // CÁLCULOS VISUALES ESPECTADOR
     const xpMeta = 1000; 
     const xpActualNivel = user.puntosXP % xpMeta;
     const porcentajeNivel = (xpActualNivel / xpMeta) * 100;
 
-    // --- LÓGICA DE BARRA DE PROGRESO STREAMER (30 SEGUNDOS) ---
-    const cicloNivelHoras = 30 / 3600; // 0.008333... horas
-    const progresoActual = user.horasStream % cicloNivelHoras;
-    const porcentajeStreamer = Math.min(100, (progresoActual / cicloNivelHoras) * 100);
+    // --- NUEVA LÓGICA DE BARRA DE PROGRESO STREAMER ---
+    // Convertimos las horas acumuladas a segundos totales
+    const segundosTotales = user.horasStream * 3600;
+    // Ciclo de nivel cada 30 segundos
+    const cicloSegundos = 30;
+    
+    // Segundos que lleva en el nivel actual
+    const segundosEnNivel = segundosTotales % cicloSegundos;
+    
+    // Segundos que le faltan para subir
+    const segundosFaltantes = Math.ceil(cicloSegundos - segundosEnNivel);
+    
+    // Porcentaje para la barra visual (0% a 100%)
+    const porcentajeStreamer = (segundosEnNivel / cicloSegundos) * 100;
 
     const isFormValid = tarjeta.nombre && tarjeta.num && tarjeta.exp && tarjeta.cvc;
 
@@ -207,10 +215,13 @@ const DashboardUnificado = () => {
                             <div className="progress-bar-container mt-20" style={{background:'#333', height:'10px', borderRadius:'5px', overflow:'hidden'}}>
                                 <div style={{width: `${porcentajeStreamer}%`, background:'#ff0055', height:'100%', transition:'width 0.5s'}}></div>
                             </div>
-                            <p className="text-small text-muted mt-5">{Math.round(porcentajeStreamer)}% para subir de nivel (cada 30s)</p>
+                            {/* AQUÍ SE MUESTRA EL TIEMPO RESTANTE */}
+                            <p className="text-small text-muted mt-5">
+                                Faltan <span className="text-neon">{segundosFaltantes} segundos</span> para subir de nivel
+                            </p>
                         </div>
 
-                        {/* PANEL DE CONFIGURACIÓN DE NIVELES (Aquí se usan las funciones) */}
+                        {/* PANEL DE CONFIGURACIÓN DE NIVELES */}
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>
                             <h3 className="section-title text-small">⚙️ Configuración de XP por Nivel</h3>
                             <p className="text-muted text-small">Define cuánta XP TOTAL necesita un espectador para alcanzar cada nivel.</p>
@@ -238,7 +249,7 @@ const DashboardUnificado = () => {
                             <button className="btn-secondary mt-20 w-100" onClick={handleGuardarConfig}>GUARDAR CAMBIOS</button>
                         </div>
 
-                        {/* PANEL DE GESTIÓN DE REGALOS (Aquí se usan las otras funciones) */}
+                        {/* PANEL DE GESTIÓN DE REGALOS */}
                         <div className="dashboard-panel w-100 mt-20" style={{gridColumn: '1 / -1'}}>
                             <h3 className="section-title">Gestionar Regalos</h3>
                             <form onSubmit={handleCrearRegalo} className="gift-form mt-20">
