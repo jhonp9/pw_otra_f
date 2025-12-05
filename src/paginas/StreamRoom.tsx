@@ -12,7 +12,7 @@ interface MensajeChat {
     rolUsuario: string;
 }
 
-// Componente para animación de nivel
+// Componente para animación de nivel (opcional)
 const LevelUpOverlay = ({ nivel }: { nivel: number }) => {
     if (!nivel) return null;
     return (
@@ -36,12 +36,8 @@ const StreamRoom = () => {
     const [mensaje, setMensaje] = useState("");
     const [regalos, setRegalos] = useState<any[]>([]);
     
-    // CORRECCIÓN: Definimos explícitamente los tipos del estado modal para aceptar JSX en 'message'
-    const [modal, setModal] = useState<{ 
-        isOpen: boolean; 
-        title: string; 
-        message: string | React.ReactNode 
-    }>({ isOpen: false, title: '', message: '' });
+    // Estado del modal (sin cambios en tipos, ya que 'contenido' del chat es string)
+    const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     
     const [activeLevelUp, setActiveLevelUp] = useState<number | null>(null);
 
@@ -56,11 +52,10 @@ const StreamRoom = () => {
     const [metaXpStreamer, setMetaXpStreamer] = useState(1000); 
     
     const lastProcessedMsgId = useRef<number>(0);
-    const lastGiftId = useRef<number>(0); 
-    const initialLoadDone = useRef<boolean>(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
+    const initialLoadDone = useRef<boolean>(false);
 
-    // Carga inicial
+    // Carga inicial de datos
     useEffect(() => {
         const fetchDatos = async () => {
             if (id) {
@@ -96,6 +91,7 @@ const StreamRoom = () => {
         fetchDatos();
     }, [id, user]);
 
+    // Auto-scroll del chat
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chat]);
@@ -114,7 +110,7 @@ const StreamRoom = () => {
         return () => clearInterval(interval);
     }, [isStreaming, sessionStartTime]);
 
-    // --- HEARTBEAT & NIVEL ---
+    // --- HEARTBEAT & NIVEL (CADA 5 SEGUNDOS) ---
     useEffect(() => {
         if (!id) return;
         const pulseInterval = setInterval(async () => {
@@ -151,71 +147,54 @@ const StreamRoom = () => {
         return () => clearInterval(pulseInterval);
     }, [id, user, currentStreamId, isStreaming]);
 
-    // --- POLLING CHAT ---
+    // --- POLLING CHAT UNIFICADO CON DETECCIÓN DE REGALOS ---
     useEffect(() => {
         if (!currentStreamId) return;
+        
         const chatInterval = setInterval(async () => {
             try {
                 const msgs: MensajeChat[] = await api.get(`/chat/${currentStreamId}`);
+                
+                // Si es la primera carga o no hay mensajes nuevos, solo actualizamos el puntero
                 if (lastProcessedMsgId.current === 0 && msgs.length > 0) {
                     lastProcessedMsgId.current = msgs[msgs.length - 1].id;
                     setChat(msgs);
                 } else {
+                    // Filtrar mensajes NUEVOS (ID mayor al último procesado)
                     const nuevos = msgs.filter(m => m.id > lastProcessedMsgId.current);
+                    
                     if (nuevos.length > 0) {
-                        setChat(msgs);
+                        setChat(msgs); // Actualizamos visualmente el chat
                         lastProcessedMsgId.current = msgs[msgs.length - 1].id;
+
+                        // ============================================================
+                        // LÓGICA DE DETECCIÓN DE REGALOS (SOLO PARA EL STREAMER)
+                        // ============================================================
+                        if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
+                            // Buscamos si alguno de los mensajes nuevos es del sistema (rol 'sistema')
+                            // Tu backend envía regalos con rol "sistema" y nombre "SISTEMA"
+                            const regalosRecibidos = nuevos.filter(m => m.rolUsuario === 'sistema');
+
+                            if (regalosRecibidos.length > 0) {
+                                // Tomamos el último para mostrar en el modal (o el primero, depende del gusto)
+                                const ultimoRegalo = regalosRecibidos[regalosRecibidos.length - 1];
+                                
+                                setModal({
+                                    isOpen: true,
+                                    title: '🎁 ¡REGALO RECIBIDO!',
+                                    message: ultimoRegalo.contenido // "¡Juan envió GG 👾!"
+                                });
+                            }
+                        }
                     }
                 }
             } catch (e) { /* ignore */ }
-        }, 3000);
+        }, 3000); 
+        
         return () => clearInterval(chatInterval);
-    }, [currentStreamId]);
+    }, [currentStreamId, user, id]);
 
-    // --- POLLING REGALOS (SOLO STREAMER) ---
-    useEffect(() => {
-        // Verificar que el usuario sea el streamer dueño del canal
-        if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
-            const giftInterval = setInterval(async () => {
-                try {
-                    // Usamos un timestamp para evitar cache del navegador en peticiones GET
-                    const t = new Date().getTime();
-                    const eventos = await api.get(`/shop/eventos?userId=${user.id}&lastId=${lastGiftId.current}&_t=${t}`);
-                    
-                    if (eventos && eventos.length > 0) {
-                        // Tomamos el último evento para actualizar el puntero
-                        const ultimoEvento = eventos[eventos.length - 1];
-                        lastGiftId.current = ultimoEvento.id;
-
-                        // Si ya pasó la carga inicial, mostramos notificación de los eventos nuevos
-                        if (initialLoadDone.current) {
-                            // Si hay múltiples, mostramos el último (o podríamos iterar)
-                            const nombreEspectador = ultimoEvento.usuario?.nombre || "Un espectador";
-                            
-                            // AHORA ESTO FUNCIONARÁ PORQUE 'message' ACEPTA NODOS DE REACT
-                            setModal({
-                                isOpen: true,
-                                title: '🎁 ¡REGALO RECIBIDO!',
-                                message: (
-                                    <span>
-                                        <strong className="text-neon">{nombreEspectador}</strong> {ultimoEvento.detalle}
-                                    </span>
-                                )
-                            });
-                        } else {
-                            // Primera carga: solo marcamos como leídos los anteriores
-                            initialLoadDone.current = true; 
-                        }
-                    } else {
-                        // Si no hay eventos, marcamos carga inicial como lista
-                        if (!initialLoadDone.current) initialLoadDone.current = true;
-                    }
-                } catch(e) { console.error("Error polling gifts", e); }
-            }, 3000);
-            return () => clearInterval(giftInterval);
-        }
-    }, [user, id]);
-
+    // ... Resto de funciones (handleChat, handleEnviarRegalo, etc.) sin cambios ...
     const handleChat = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !mensaje.trim() || !currentStreamId) return;
@@ -250,7 +229,7 @@ const StreamRoom = () => {
         if (res.success) {
             await refreshUser();
             
-            // Mensaje en chat público
+            // Aquí se envía el mensaje al chat con rol 'sistema'
             await api.post('/chat/enviar', {
                 userId: user.id,
                 nombre: "SISTEMA",
@@ -289,7 +268,6 @@ const StreamRoom = () => {
             setStreamEnded(false);
             setSessionStartTime(Date.now()); 
             lastProcessedMsgId.current = 0; 
-            lastGiftId.current = 0;
             initialLoadDone.current = false;
         } else {
             const stopRes = await api.post('/streams/stop', { userId: user.id, streamId: currentStreamId });
@@ -337,7 +315,14 @@ const StreamRoom = () => {
         <div className="stream-room-layout">
             {activeLevelUp && <LevelUpOverlay nivel={activeLevelUp} />}
 
-            <MiModal isOpen={modal.isOpen} onClose={()=>setModal({...modal, isOpen:false})} type="alert" title={modal.title} message={modal.message}/>
+            {/* Modal único controlado por el estado 'modal' */}
+            <MiModal 
+                isOpen={modal.isOpen} 
+                onClose={()=>setModal({...modal, isOpen:false})} 
+                type="alert" 
+                title={modal.title} 
+                message={modal.message}
+            />
             
             <div className="video-column">
                 <div className="video-player-container">
