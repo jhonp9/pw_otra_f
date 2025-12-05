@@ -39,7 +39,7 @@ const StreamRoom = () => {
     const [isStreaming, setIsStreaming] = useState(false);
     const [currentStreamId, setCurrentStreamId] = useState<number|null>(null);
     
-    // Timer de Sesión
+    // Timer de Sesión (Visual)
     const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
     const [sessionDuration, setSessionDuration] = useState(0); 
 
@@ -47,7 +47,8 @@ const StreamRoom = () => {
     const [metaXpStreamer, setMetaXpStreamer] = useState(1000); 
     
     const lastProcessedMsgId = useRef<number>(0);
-    const lastEventTime = useRef<number>(Date.now()); // Marca de tiempo para evitar duplicados en el overlay
+    // CAMBIO: Usamos lastGiftId para rastrear regalos por ID, mucho más seguro que por tiempo
+    const lastGiftId = useRef<number>(0); 
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     // 1. Carga Inicial
@@ -68,7 +69,7 @@ const StreamRoom = () => {
                         titulo: `Canal de ${streamerData.nombre}`, 
                         usuario: streamerData.nombre, 
                         categoria: "General", 
-                        nivel: streamerData.nivelStreamer 
+                        nivel: streamerData.nivelStreamer // Nivel inicial desde DB
                     });
                     
                     const regalosData = await api.get('/shop/regalos');
@@ -107,7 +108,7 @@ const StreamRoom = () => {
         return () => clearInterval(interval);
     }, [isStreaming, sessionStartTime]);
 
-    // 3. HEARTBEAT (10s)
+    // 3. HEARTBEAT (10s) - LÓGICA DE NIVEL CORREGIDA
     useEffect(() => {
         if (!id) return;
         const pulseInterval = setInterval(async () => {
@@ -128,30 +129,35 @@ const StreamRoom = () => {
                     setSessionStartTime(null);
                 }
 
+                // Si soy el streamer dueño del canal
                 if (user?.rol === 'streamer' && Number(user.id) === Number(id) && isStreaming && currentStreamId) {
                     const pulseRes = await api.post('/streams/pulse', { userId: user.id, streamId: currentStreamId });
                     
-                    if (pulseRes.subioNivel) {
+                    // LÓGICA DE NIVEL BASADA EN TOTAL:
+                    // pulseRes.nivel viene del backend calculado con user.horasStream (Total acumulado)
+                    // Si el nivel que dice el backend es mayor al que tenemos en pantalla, avisamos.
+                    if (streamInfo && pulseRes.nivel > streamInfo.nivel) {
                         setModal({ 
                             isOpen: true, 
-                            title: '¡LEVEL UP STREAMER! 🎉', 
-                            message: `¡Has subido al nivel ${pulseRes.nivel}!` 
+                            title: '¡SUBISTE DE NIVEL! 🎉', 
+                            message: `¡Increíble! Gracias a tu tiempo total de transmisión, ahora eres Nivel ${pulseRes.nivel}.` 
                         });
+                        // Actualizamos el estado local inmediatamente
                         setStreamInfo((prev:any) => ({...prev, nivel: pulseRes.nivel}));
-                        await refreshUser();
+                        await refreshUser(); // Actualizamos contexto global
                     }
                 }
             } catch (e) { /* ignore */ }
         }, 10000); 
         return () => clearInterval(pulseInterval);
-    }, [id, user, currentStreamId, isStreaming]);
+    }, [id, user, currentStreamId, isStreaming, streamInfo]); // Agregamos streamInfo a dependencias para comparar nivel
 
-    // 4. POLLINGS (CHAT y OVERLAY)
+    // 4. POLLINGS (CHAT y OVERLAY DE REGALOS)
     useEffect(() => {
         if (!currentStreamId) return;
         
         const fastInterval = setInterval(async () => {
-            // A. Chat Polling
+            // A. Chat
             try {
                 const msgs: MensajeChat[] = await api.get(`/chat/${currentStreamId}`);
                 if (lastProcessedMsgId.current === 0 && msgs.length > 0) {
@@ -166,26 +172,30 @@ const StreamRoom = () => {
                 }
             } catch (e) { /* ignore */ }
 
-            // B. Eventos Regalo (Overlay Streamer) - REQUERIMIENTO CLAVE
-            // Solo se ejecuta si soy el streamer dueño del canal
+            // B. Eventos Regalo (Overlay Streamer) - CORREGIDO
             if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
                 try {
-                    const eventos = await api.get(`/shop/eventos?userId=${user.id}&since=${lastEventTime.current}`);
+                    // Usamos lastGiftId para pedir solo eventos nuevos por ID
+                    const eventos = await api.get(`/shop/eventos?userId=${user.id}&lastId=${lastGiftId.current}`);
+                    
                     if (eventos && eventos.length > 0) {
-                        // Actualizar marca de tiempo para no repetir
-                        lastEventTime.current = new Date(eventos[eventos.length - 1].fecha).getTime();
+                        // Actualizamos el último ID conocido
+                        lastGiftId.current = eventos[eventos.length - 1].id;
                         
-                        // Mostrar Overlay del último regalo
+                        // Mostramos el último regalo recibido en el modal
                         const ultimoRegalo = eventos[eventos.length - 1];
+                        console.log("Nuevo regalo detectado:", ultimoRegalo); // Debug
+
                         setModal({
                             isOpen: true,
                             title: '🎁 ¡REGALO RECIBIDO!',
                             message: (
                                 <div style={{textAlign: 'center'}}>
+                                    <div style={{fontSize: '4rem', marginBottom:'10px'}}>🎁</div>
                                     <p style={{fontSize: '1.5rem', fontWeight: 'bold', color: 'white', margin: '10px 0'}}>
                                         {ultimoRegalo.detalle}
                                     </p>
-                                    <div style={{fontSize: '3rem'}}>🎉</div>
+                                    <small className="text-neon">¡Sigue así, streamer!</small>
                                 </div>
                             )
                         });
@@ -193,7 +203,7 @@ const StreamRoom = () => {
                 } catch(e) { console.error(e); }
             }
 
-        }, 3000); // Polling cada 3 segundos
+        }, 3000); 
         
         return () => clearInterval(fastInterval);
     }, [currentStreamId, user, id]);
@@ -236,7 +246,6 @@ const StreamRoom = () => {
                 title: '¡REGALO ENVIADO! 🚀', 
                 message: `Has enviado ${regalo.nombre} exitosamente.` 
             });
-            // Mensaje automático en chat
             await api.post('/chat/enviar', {
                 userId: user.id,
                 nombre: "SISTEMA",
