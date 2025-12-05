@@ -12,20 +12,26 @@ interface MensajeChat {
     rolUsuario: string;
 }
 
-// --- COMPONENTES OVERLAY ---
-
+// --- 1. COMPONENTE MODAL PARA EL STREAMER (OVERLAY) ---
+// Este componente aparece en la pantalla del Streamer cuando recibe un regalo
 const GiftOverlay = ({ data }: { data: any }) => {
     if (!data) return null;
     return (
-        <div className="gift-overlay-animation">
-            <div style={{ fontSize: '5rem', marginBottom: '10px', filter: 'drop-shadow(0 0 20px gold)' }}>
-                🎁
-            </div>
-            <h2 className="text-neon" style={{ margin: 0, fontSize: '2.5rem', textTransform: 'uppercase' }}>
-                ¡NUEVO REGALO!
+        <div className="gift-overlay-animation" style={{
+            background: 'rgba(20, 20, 20, 0.95)',
+            border: '3px solid #00ff41',
+            borderRadius: '15px',
+            padding: '40px',
+            boxShadow: '0 0 50px rgba(0, 255, 65, 0.4)',
+            zIndex: 9999
+        }}>
+            <div style={{ fontSize: '4rem', marginBottom: '10px' }}>🎁</div>
+            <h2 className="text-neon" style={{ margin: '0 0 15px 0', fontSize: '2rem' }}>
+                ¡NUEVO REGALO RECIBIDO!
             </h2>
-            <div style={{background: 'rgba(255,255,255,0.1)', padding: '15px', borderRadius: '10px', marginTop: '15px'}}>
-                <p className="text-white" style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+            <div style={{ background: '#333', padding: '15px', borderRadius: '8px' }}>
+                <p className="text-white" style={{ fontSize: '1.3rem', fontWeight: 'bold', margin: 0 }}>
+                    {/* El detalle ya viene del backend como: "¡[Usuario] envió [Regalo]!" */}
                     {data.detalle}
                 </p>
             </div>
@@ -42,7 +48,6 @@ const LevelUpOverlay = ({ nivel }: { nivel: number }) => {
             <p className="text-white" style={{ fontSize: '1.5rem', marginTop: '10px' }}>
                 Ahora eres Streamer <strong>Nivel {nivel}</strong>
             </p>
-            <small className="text-muted">¡Tu constancia tiene recompensa!</small>
         </div>
     );
 };
@@ -59,9 +64,10 @@ const StreamRoom = () => {
     const [mensaje, setMensaje] = useState("");
     const [regalos, setRegalos] = useState<any[]>([]);
     
+    // Estado para el modal del ESPECTADOR (confirmación de envío)
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     
-    // --- ESTADOS PARA OVERLAYS ---
+    // Estados para overlays del STREAMER (confirmación de recepción)
     const [activeGift, setActiveGift] = useState<any>(null);
     const [activeLevelUp, setActiveLevelUp] = useState<number | null>(null);
 
@@ -77,7 +83,7 @@ const StreamRoom = () => {
     
     const lastProcessedMsgId = useRef<number>(0);
     const lastGiftId = useRef<number>(0); 
-    const initialLoadDone = useRef<boolean>(false); // Control para no mostrar regalos viejos al entrar
+    const initialLoadDone = useRef<boolean>(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     // Carga inicial
@@ -193,36 +199,30 @@ const StreamRoom = () => {
                 }
             } catch (e) { /* ignore */ }
 
-            // 2. OVERLAY DE REGALOS (Solo Streamer)
+            // 2. OVERLAY DE REGALOS (Lógica del STREAMER)
             if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
                 try {
-                    // Pedimos eventos nuevos (o todos si lastGiftId es 0)
+                    // Pedimos eventos nuevos usando lastId para no repetir
                     const eventos = await api.get(`/shop/eventos?userId=${user.id}&lastId=${lastGiftId.current}`);
                     
                     if (eventos && eventos.length > 0) {
                         const ultimoEvento = eventos[eventos.length - 1];
                         
-                        // CORRECCIÓN LÓGICA IMPORTANTE:
-                        // Si es la primera vez que consultamos (initialLoadDone es false),
-                        // solo actualizamos el ID para sincronizar, NO mostramos alerta de cosas viejas.
-                        // PERO si lastGiftId ya era > 0, entonces SÍ mostramos.
-                        
                         if (!initialLoadDone.current) {
-                            // Primera carga: Sincronizar silenciosamente
+                            // Primera carga: Sincronizar ID sin mostrar alerta para no saturar al entrar
                             lastGiftId.current = ultimoEvento.id;
                             initialLoadDone.current = true; 
                         } else {
-                            // Cargas subsecuentes: Si hay eventos, son NUEVOS -> Mostrar Overlay
+                            // Cargas siguientes: Si hay evento, es NUEVO -> Mostrar Overlay
                             lastGiftId.current = ultimoEvento.id;
+                            
+                            // ACTIVAMOS EL MODAL/OVERLAY DEL STREAMER
                             setActiveGift(ultimoEvento);
                             
-                            // Sonido opcional si quisieras ponerlo aquí
-                            // new Audio('/alert.mp3').play().catch(e=>{});
-
+                            // Lo ocultamos después de 5 segundos
                             setTimeout(() => setActiveGift(null), 5000);
                         }
                     } else {
-                        // Si no hay eventos, marcamos la carga inicial como hecha para estar listos para el próximo
                         if (!initialLoadDone.current) initialLoadDone.current = true;
                     }
                 } catch(e) { console.error(e); }
@@ -256,6 +256,7 @@ const StreamRoom = () => {
         } catch (error) { console.error("Error chat", error); }
     };
 
+    // --- 2. LÓGICA DE ENVÍO DE REGALO (ESPECTADOR) ---
     const handleEnviarRegalo = async (regalo: any) => {
         if (!user || !currentStreamId) return;
         const res = await api.post('/shop/enviar', { 
@@ -267,7 +268,7 @@ const StreamRoom = () => {
         if (res.success) {
             await refreshUser();
             
-            // 1. Enviar mensaje al chat automáticamente
+            // Enviar mensaje automático al chat
             await api.post('/chat/enviar', {
                 userId: user.id,
                 nombre: "SISTEMA",
@@ -277,23 +278,23 @@ const StreamRoom = () => {
                 streamId: currentStreamId
             });
 
-            // 2. REQUERIMIENTO CUMPLIDO: Modal de confirmación para el espectador
+            // MODAL DE CONFIRMACIÓN PARA EL ESPECTADOR
             if (res.subioNivel) {
                 setModal({ 
                     isOpen: true, 
-                    title: '¡REGALO ENVIADO Y NIVEL UP!', 
-                    message: `Has enviado ${regalo.nombre} con éxito y subiste al nivel ${res.nivel}.` 
+                    title: '✅ ¡Regalo Enviado y Nivel Up!', 
+                    message: `Envío exitoso. ¡Felicidades, subiste al nivel ${res.nivel} de espectador!` 
                 });
             } else {
                 setModal({ 
                     isOpen: true, 
-                    title: '¡Regalo Enviado! 🎁', 
-                    message: `Has enviado ${regalo.nombre} a ${streamInfo.usuario} exitosamente.` 
+                    title: '✅ Envío Exitoso', 
+                    message: `Has enviado el regalo ${regalo.nombre} correctamente a ${streamInfo.usuario}.` 
                 });
             }
 
         } else {
-            setModal({ isOpen: true, title: 'Error', message: res.msg || 'Saldo insuficiente' });
+            setModal({ isOpen: true, title: 'Error', message: res.msg || 'No tienes suficientes monedas.' });
         }
     };
 
@@ -307,7 +308,6 @@ const StreamRoom = () => {
             setStreamEnded(false);
             setSessionStartTime(Date.now()); 
             lastProcessedMsgId.current = 0; 
-            // Reiniciar estado de polling para el streamer
             lastGiftId.current = 0;
             initialLoadDone.current = false;
         } else {
@@ -354,10 +354,11 @@ const StreamRoom = () => {
 
     return (
         <div className="stream-room-layout">
-            {/* OVERLAYS ANIMADOS */}
+            {/* OVERLAYS ANIMADOS PARA EL STREAMER */}
             {activeGift && <GiftOverlay data={activeGift} />}
             {activeLevelUp && <LevelUpOverlay nivel={activeLevelUp} />}
 
+            {/* MODAL DE CONFIRMACIÓN PARA EL ESPECTADOR (Y alertas generales) */}
             <MiModal isOpen={modal.isOpen} onClose={()=>setModal({...modal, isOpen:false})} type="alert" title={modal.title} message={modal.message}/>
             
             <div className="video-column">
