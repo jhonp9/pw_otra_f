@@ -12,36 +12,42 @@ interface MensajeChat {
     rolUsuario: string;
 }
 
-// Overlay Animado de Regalos
+// --- COMPONENTES OVERLAY (ESTILOS INLINE PARA EFECTOS VISUALES) ---
+
 const GiftOverlay = ({ data }: { data: any }) => {
     if (!data) return null;
     return (
         <div className="gift-overlay-animation">
-            <div style={{ fontSize: '4rem', marginBottom: '10px', filter: 'drop-shadow(0 0 10px #00ff41)' }}>
+            <div style={{ fontSize: '5rem', marginBottom: '10px', filter: 'drop-shadow(0 0 20px gold)' }}>
                 🎁
             </div>
-            <h2 className="text-neon" style={{ margin: 0, fontSize: '2rem' }}>¡NUEVO REGALO!</h2>
-            <p className="text-white" style={{ fontSize: '1.2rem', marginTop: '10px', fontWeight: 'bold' }}>
-                {data.detalle}
-            </p>
+            <h2 className="text-neon" style={{ margin: 0, fontSize: '2.5rem', textTransform: 'uppercase' }}>
+                ¡NUEVO REGALO!
+            </h2>
+            <div style={{background: 'rgba(255,255,255,0.1)', padding: '15px', borderRadius: '10px', marginTop: '15px'}}>
+                <p className="text-white" style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>
+                    {data.detalle}
+                </p>
+            </div>
         </div>
     );
 };
 
-// Overlay Animado de Nivel (Streamer)
 const LevelUpOverlay = ({ nivel }: { nivel: number }) => {
     if (!nivel) return null;
     return (
         <div className="gift-overlay-animation" style={{ borderColor: '#ff0055', boxShadow: '0 0 50px #ff0055' }}>
-            <div style={{ fontSize: '4rem', marginBottom: '10px' }}>🚀</div>
-            <h2 style={{ color: '#ff0055', margin: 0, fontSize: '2rem' }}>¡SUBISTE DE NIVEL!</h2>
-            <p className="text-white" style={{ fontSize: '1.2rem', marginTop: '10px' }}>
+            <div style={{ fontSize: '5rem', marginBottom: '10px' }}>🚀</div>
+            <h2 style={{ color: '#ff0055', margin: 0, fontSize: '2.5rem' }}>¡SUBISTE DE NIVEL!</h2>
+            <p className="text-white" style={{ fontSize: '1.5rem', marginTop: '10px' }}>
                 Ahora eres Streamer <strong>Nivel {nivel}</strong>
             </p>
-            <small className="text-muted">¡Tu tiempo total acumulado ha dado frutos!</small>
+            <small className="text-muted">¡Tu constancia tiene recompensa!</small>
         </div>
     );
 };
+
+// ------------------------------------------------------------------
 
 const StreamRoom = () => {
     const { id } = useParams();
@@ -55,7 +61,7 @@ const StreamRoom = () => {
     
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
     
-    // Estados para Overlays
+    // --- ESTADOS PARA OVERLAYS ---
     const [activeGift, setActiveGift] = useState<any>(null);
     const [activeLevelUp, setActiveLevelUp] = useState<number | null>(null);
 
@@ -70,7 +76,7 @@ const StreamRoom = () => {
     const [metaXpStreamer, setMetaXpStreamer] = useState(1000); 
     
     const lastProcessedMsgId = useRef<number>(0);
-    const lastGiftId = useRef<number>(0); 
+    const lastGiftId = useRef<number>(0); // Para no repetir alertas de regalos viejos
     const chatEndRef = useRef<HTMLDivElement>(null);
 
     // Carga inicial
@@ -109,6 +115,7 @@ const StreamRoom = () => {
         fetchDatos();
     }, [id, user]);
 
+    // Scroll chat
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chat]);
@@ -134,7 +141,7 @@ const StreamRoom = () => {
             try {
                 const status = await api.get(`/streams/status/${id}`);
                 
-                // Manejo de estado del stream
+                // Manejo de estado del stream (Offline/Online)
                 if (status.isLive && status.streamId !== currentStreamId) {
                     setChat([]); 
                     setCurrentStreamId(status.streamId);
@@ -153,26 +160,26 @@ const StreamRoom = () => {
                 if (user?.rol === 'streamer' && Number(user.id) === Number(id) && isStreaming && currentStreamId) {
                     const pulseRes = await api.post('/streams/pulse', { userId: user.id, streamId: currentStreamId });
                     
-                    // DETECCIÓN DE NIVEL EN VIVO
+                    // REQUERIMIENTO: DETECCIÓN DE NIVEL EN VIVO (ACUMULADO)
                     if (pulseRes.subioNivel) {
                         setActiveLevelUp(pulseRes.nivel); // Mostrar Overlay
-                        setStreamInfo((prev:any) => ({...prev, nivel: pulseRes.nivel})); // Actualizar UI
+                        setStreamInfo((prev:any) => ({...prev, nivel: pulseRes.nivel})); // Actualizar UI Info
                         await refreshUser(); 
-                        setTimeout(() => setActiveLevelUp(null), 6000);
+                        setTimeout(() => setActiveLevelUp(null), 6000); // Ocultar tras 6s
                     }
                 }
             } catch (e) { /* ignore */ }
-        }, 5000); // <-- Intervalo 5s para mayor precisión
+        }, 5000); 
         
         return () => clearInterval(pulseInterval);
     }, [id, user, currentStreamId, isStreaming]);
 
-    // --- POLLINGS (CHAT & REGALOS) ---
+    // --- POLLINGS RÁPIDOS (CHAT & REGALOS) - CADA 3 SEGUNDOS ---
     useEffect(() => {
         if (!currentStreamId) return;
         
         const fastInterval = setInterval(async () => {
-            // Chat
+            // 1. Chat Polling (Igual que antes)
             try {
                 const msgs: MensajeChat[] = await api.get(`/chat/${currentStreamId}`);
                 if (lastProcessedMsgId.current === 0 && msgs.length > 0) {
@@ -187,15 +194,27 @@ const StreamRoom = () => {
                 }
             } catch (e) { /* ignore */ }
 
-            // Overlay de Regalos (Solo Streamer)
+            // 2. REQUERIMIENTO: Overlay de Regalos (Solo si soy el Streamer)
             if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
                 try {
                     const eventos = await api.get(`/shop/eventos?userId=${user.id}&lastId=${lastGiftId.current}`);
+                    
                     if (eventos && eventos.length > 0) {
-                        lastGiftId.current = eventos[eventos.length - 1].id;
-                        const ultimoRegalo = eventos[eventos.length - 1];
-                        setActiveGift(ultimoRegalo);
-                        setTimeout(() => setActiveGift(null), 5000);
+                        const nuevoUltimoId = eventos[eventos.length - 1].id;
+
+                        // CORRECCIÓN: Si lastGiftId es 0 (primera carga), NO mostramos overlay, 
+                        // solo actualizamos el puntero para esperar al SIGUIENTE regalo real.
+                        if (lastGiftId.current === 0) {
+                            lastGiftId.current = nuevoUltimoId;
+                        } else {
+                            // Si ya estábamos sincronizados y llega uno nuevo, mostramos overlay
+                            lastGiftId.current = nuevoUltimoId;
+                            const ultimoRegalo = eventos[eventos.length - 1];
+                            setActiveGift(ultimoRegalo);
+                            
+                            // Ocultar Overlay después de 5 segundos
+                            setTimeout(() => setActiveGift(null), 5000);
+                        }
                     }
                 } catch(e) { console.error(e); }
             }
@@ -205,6 +224,7 @@ const StreamRoom = () => {
         return () => clearInterval(fastInterval);
     }, [currentStreamId, user, id]);
 
+    // ... (El resto de funciones: handleChat, handleEnviarRegalo, toggleStream se mantienen igual)
     const handleChat = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || !mensaje.trim() || !currentStreamId) return;
@@ -238,6 +258,7 @@ const StreamRoom = () => {
         
         if (res.success) {
             await refreshUser();
+            // Enviamos mensaje al chat para que todos lo vean
             await api.post('/chat/enviar', {
                 userId: user.id,
                 nombre: "SISTEMA",
@@ -270,9 +291,8 @@ const StreamRoom = () => {
             setCurrentStreamId(null);
             setSessionStartTime(null);
             
-            // Check final si subió de nivel justo al detener
             if (stopRes.subioNivel) {
-                setModal({ isOpen:true, title:'¡SUBISTE DE NIVEL AL FINALIZAR!', message: `Felicidades, terminaste tu transmisión siendo Nivel ${stopRes.nivel}.`});
+                setModal({ isOpen:true, title:'¡SUBISTE DE NIVEL!', message: `Felicidades, terminaste tu transmisión siendo Nivel ${stopRes.nivel}.`});
             } else {
                 setModal({ isOpen:true, title:'Stream Finalizado', message:'Transmisión terminada correctamente.'});
             }
@@ -309,7 +329,7 @@ const StreamRoom = () => {
 
     return (
         <div className="stream-room-layout">
-            {/* OVERLAYS ANIMADOS */}
+            {/* --- REQUERIMIENTO: OVERLAYS ANIMADOS --- */}
             {activeGift && <GiftOverlay data={activeGift} />}
             {activeLevelUp && <LevelUpOverlay nivel={activeLevelUp} />}
 
