@@ -12,7 +12,7 @@ interface MensajeChat {
     rolUsuario: string;
 }
 
-// Componente para animación de nivel (opcional, lo mantenemos por si acaso)
+// Componente para animación de nivel
 const LevelUpOverlay = ({ nivel }: { nivel: number }) => {
     if (!nivel) return null;
     return (
@@ -36,8 +36,12 @@ const StreamRoom = () => {
     const [mensaje, setMensaje] = useState("");
     const [regalos, setRegalos] = useState<any[]>([]);
     
-    // Un único estado de Modal para todas las notificaciones
-    const [modal, setModal] = useState({ isOpen: false, title: '', message: '' });
+    // CORRECCIÓN: Definimos explícitamente los tipos del estado modal para aceptar JSX en 'message'
+    const [modal, setModal] = useState<{ 
+        isOpen: boolean; 
+        title: string; 
+        message: string | React.ReactNode 
+    }>({ isOpen: false, title: '', message: '' });
     
     const [activeLevelUp, setActiveLevelUp] = useState<number | null>(null);
 
@@ -56,7 +60,7 @@ const StreamRoom = () => {
     const initialLoadDone = useRef<boolean>(false);
     const chatEndRef = useRef<HTMLDivElement>(null);
 
-    // Carga inicial de datos del Streamer y Regalos
+    // Carga inicial
     useEffect(() => {
         const fetchDatos = async () => {
             if (id) {
@@ -92,7 +96,6 @@ const StreamRoom = () => {
         fetchDatos();
     }, [id, user]);
 
-    // Auto-scroll del chat
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [chat]);
@@ -111,7 +114,7 @@ const StreamRoom = () => {
         return () => clearInterval(interval);
     }, [isStreaming, sessionStartTime]);
 
-    // --- HEARTBEAT & NIVEL (CADA 5 SEGUNDOS) ---
+    // --- HEARTBEAT & NIVEL ---
     useEffect(() => {
         if (!id) return;
         const pulseInterval = setInterval(async () => {
@@ -132,7 +135,6 @@ const StreamRoom = () => {
                     setSessionStartTime(null);
                 }
 
-                // SI SOY EL STREAMER: Enviar pulso
                 if (user?.rol === 'streamer' && Number(user.id) === Number(id) && isStreaming && currentStreamId) {
                     const pulseRes = await api.post('/streams/pulse', { userId: user.id, streamId: currentStreamId });
                     
@@ -149,12 +151,10 @@ const StreamRoom = () => {
         return () => clearInterval(pulseInterval);
     }, [id, user, currentStreamId, isStreaming]);
 
-    // --- POLLINGS RÁPIDOS (CHAT & REGALOS STREAMER) ---
+    // --- POLLING CHAT ---
     useEffect(() => {
         if (!currentStreamId) return;
-        
-        const fastInterval = setInterval(async () => {
-            // 1. Chat Polling
+        const chatInterval = setInterval(async () => {
             try {
                 const msgs: MensajeChat[] = await api.get(`/chat/${currentStreamId}`);
                 if (lastProcessedMsgId.current === 0 && msgs.length > 0) {
@@ -168,41 +168,53 @@ const StreamRoom = () => {
                     }
                 }
             } catch (e) { /* ignore */ }
+        }, 3000);
+        return () => clearInterval(chatInterval);
+    }, [currentStreamId]);
 
-            // 2. DETECCIÓN DE REGALOS (Solo para el STREAMER)
-            if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
+    // --- POLLING REGALOS (SOLO STREAMER) ---
+    useEffect(() => {
+        // Verificar que el usuario sea el streamer dueño del canal
+        if (user?.rol === 'streamer' && Number(user.id) === Number(id)) {
+            const giftInterval = setInterval(async () => {
                 try {
-                    // Consultamos eventos nuevos
-                    const eventos = await api.get(`/shop/eventos?userId=${user.id}&lastId=${lastGiftId.current}`);
+                    // Usamos un timestamp para evitar cache del navegador en peticiones GET
+                    const t = new Date().getTime();
+                    const eventos = await api.get(`/shop/eventos?userId=${user.id}&lastId=${lastGiftId.current}&_t=${t}`);
                     
                     if (eventos && eventos.length > 0) {
+                        // Tomamos el último evento para actualizar el puntero
                         const ultimoEvento = eventos[eventos.length - 1];
-                        
-                        // Si no es la carga inicial, mostramos el MODAL
+                        lastGiftId.current = ultimoEvento.id;
+
+                        // Si ya pasó la carga inicial, mostramos notificación de los eventos nuevos
                         if (initialLoadDone.current) {
-                            lastGiftId.current = ultimoEvento.id;
+                            // Si hay múltiples, mostramos el último (o podríamos iterar)
+                            const nombreEspectador = ultimoEvento.usuario?.nombre || "Un espectador";
                             
-                            // AQUÍ ESTÁ EL CAMBIO: Usamos setModal en lugar de un overlay personalizado
+                            // AHORA ESTO FUNCIONARÁ PORQUE 'message' ACEPTA NODOS DE REACT
                             setModal({
                                 isOpen: true,
                                 title: '🎁 ¡REGALO RECIBIDO!',
-                                message: ultimoEvento.detalle // Ejemplo: "Juan envió Diamante"
+                                message: (
+                                    <span>
+                                        <strong className="text-neon">{nombreEspectador}</strong> {ultimoEvento.detalle}
+                                    </span>
+                                )
                             });
                         } else {
-                            // Primera carga: solo sincronizamos el ID
-                            lastGiftId.current = ultimoEvento.id;
+                            // Primera carga: solo marcamos como leídos los anteriores
                             initialLoadDone.current = true; 
                         }
                     } else {
+                        // Si no hay eventos, marcamos carga inicial como lista
                         if (!initialLoadDone.current) initialLoadDone.current = true;
                     }
-                } catch(e) { console.error(e); }
-            }
-
-        }, 3000); 
-        
-        return () => clearInterval(fastInterval);
-    }, [currentStreamId, user, id]);
+                } catch(e) { console.error("Error polling gifts", e); }
+            }, 3000);
+            return () => clearInterval(giftInterval);
+        }
+    }, [user, id]);
 
     const handleChat = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -238,6 +250,7 @@ const StreamRoom = () => {
         if (res.success) {
             await refreshUser();
             
+            // Mensaje en chat público
             await api.post('/chat/enviar', {
                 userId: user.id,
                 nombre: "SISTEMA",
@@ -300,7 +313,6 @@ const StreamRoom = () => {
         return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
     };
 
-    // Calculo de progreso para la barra del espectador
     const calcularProgreso = () => {
         if (!user) return { percent: 0, target: 1000 };
         const currentLvl = user.nivelEspectador;
@@ -325,7 +337,6 @@ const StreamRoom = () => {
         <div className="stream-room-layout">
             {activeLevelUp && <LevelUpOverlay nivel={activeLevelUp} />}
 
-            {/* MODAL UNIFICADO */}
             <MiModal isOpen={modal.isOpen} onClose={()=>setModal({...modal, isOpen:false})} type="alert" title={modal.title} message={modal.message}/>
             
             <div className="video-column">
